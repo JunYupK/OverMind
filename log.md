@@ -8,9 +8,10 @@
 ## 현재 상태
 
 - **마일스톤:** H — 개발 하네스 구축
-- **최근 갱신:** 2026-09-01 · Claude Code
-- **브랜치:** master
-- **verify:** 미구축
+- **최근 갱신:** 2026-09-02 · Claude Code
+- **브랜치:** feat/harness
+- **verify:** `./gradlew guardrails` 구축 완료 — 문서 줄 수 상한, ddl-auto validate 고정,
+  마이그레이션 해시, log.md 동반 변경, gitleaks(로컬 미설치 시 경고만) 4+1종 가드 녹색
 
 ### 진행 중
 
@@ -18,8 +19,7 @@
 
 ### 다음 할 일
 
-1. Task 3 에이전트 문서 세트 작성
-2. Task 4 Gradle + Spring Boot 스켈레톤
+1. Task 10 GitHub Actions 워크플로 (`.github/workflows/ci.yml`) — verify/guardrails/evaluation 잡
 
 ### 열려 있는 결정
 
@@ -33,9 +33,17 @@
 
 ## 세션 기록
 
-### 2026-09-01 · Claude Code · Task 1~2
+### 2026-09-02 · Claude Code · Task 9 · 4d65583
 
-- **한 일:** 사료 문서를 `docs/arch/`로 이동, 문서 골격과 결정 레지스터 생성, log.md 초기화
-- **결과:** verify 미구축 / 리뷰 미실시
-- **함정:** 없음
-- **다음:** Task 3 에이전트 문서 세트
+- **한 일:** 가드레일 검사 4종(`DocLineLimitGuardTest`, `DdlAutoGuardTest`,
+  `MigrationChecksumGuardTest`, `LogUpdatedGuardTest`) 작성, `build.gradle.kts`에
+  `updateMigrationChecksums` 태스크 추가, `docs/harness/migration-checksums.txt` 생성.
+  네 가드 전부 실패/통과를 직접 관찰(문서 30줄 초과, 체크섬 파일 부재, ddl-auto=update,
+  log.md 없이 src/만 바뀐 baseRef 범위).
+- **결과:** `./gradlew guardrails` 통과 (gitleaks 미설치 경고만 출력) / 리뷰 미실시
+- **함정:** `build.gradle.kts`에 `java { toolchain {...} }` 확장이 이미 있어서, 브리프의
+  `java.security.MessageDigest.getInstance(...)` 표현이 `java`를 확장 프로퍼티로 해석해
+  컴파일 에러(`Unresolved reference: security`)를 낸다. 파일 상단에
+  `import java.security.MessageDigest`를 추가하고 본문에서 `MessageDigest`로 바꿔서 해결.
+  log.md HEAD 블록의 `브랜치: master`가 실제와 달랐다 — `feat/harness`로 정정.
+- **다음:** Task 10 GitHub Actions 워크플로

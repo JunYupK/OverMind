@@ -1,0 +1,25 @@
+# CLAUDE.md
+
+**먼저 `AGENTS.md`를 읽어라.** 이 프로젝트의 규약은 전부 거기서 라우팅된다.
+이 파일에는 Claude Code 전용 사항만 있다.
+
+## Claude Code 전용
+
+- 구현 작업은 `superpowers:test-driven-development`를 따른다.
+- 버그·테스트 실패를 만나면 `superpowers:systematic-debugging`을 먼저 쓴다.
+- 새 기능·설계 변경은 `superpowers:brainstorming`을 먼저 쓴다.
+- 리뷰는 **자기가 구현한 코드를 자기가 리뷰하지 않는다.**
+  Claude Code가 구현했으면 리뷰는 `/codex`로 넘긴다.
+  자세한 규칙은 `docs/harness/50-review-protocol.md`.
+
+## 권한
+
+- 자동 허용 — 읽기·검색, `./gradlew` 실행, `src/**` 편집, `log.md` 편집
+- 확인 필요 — 커밋, 푸시, PR 생성, 의존성 추가, 마이그레이션 파일 생성,
+  실 LLM 호출(`./gradlew evaluationTest`)
+- 금지 — `docs/harness/40-guardrails.md`의 금지 목록
+
+## 이 파일의 제약
+
+40줄을 넘기지 않는다. CI가 검사한다.
+규약을 여기 복제하면 `AGENTS.md`와 갈라진다.

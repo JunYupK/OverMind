@@ -1,0 +1,14 @@
+spring:
+  application:
+    name: overmind
+  datasource:
+    url: ${OVERMIND_DB_URL:}
+    username: ${OVERMIND_DB_USER:}
+    password: ${OVERMIND_DB_PASSWORD:}
+  jpa:
+    hibernate:
+      # 가드레일이 이 값을 검사한다. validate 외의 값으로 바꾸지 않는다.
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true

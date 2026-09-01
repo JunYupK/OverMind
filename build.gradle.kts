@@ -78,7 +78,29 @@ val guardrailTest = tasks.register<Test>("guardrailTest") {
         (project.findProperty("baseRef") ?: "origin/master").toString()
     )
     outputs.upToDateWhen { false }
-    testLogging { events("failed") }
+    testLogging { events("failed", "skipped") }
+    // JUnit5 assumeTrue()로 건너뛴 테스트는 Gradle의 TestResult에 사유를 실어 나르지 않는다
+    // (result.exceptions가 항상 비어 있다). JUnit XML 리포트에는 사유가 그대로 남으므로
+    // 실행 후 그 파일을 읽어 콘솔에 눈에 띄게 다시 찍는다 — CI 로그만 보고도
+    // 어떤 baseRef가 안 풀렸는지 알 수 있어야 한다.
+    doLast {
+        val resultsDir = reports.junitXml.outputLocation.get().asFile
+        if (resultsDir.isDirectory) {
+            val skipMessage = Regex("<skipped message=\"([^\"]*)\"")
+            resultsDir.listFiles { f -> f.extension == "xml" }
+                ?.forEach { xmlFile ->
+                    skipMessage.findAll(xmlFile.readText()).forEach { m ->
+                        val reason = m.groupValues[1]
+                            .replace("&apos;", "'")
+                            .replace("&quot;", "\"")
+                            .replace("&lt;", "<")
+                            .replace("&gt;", ">")
+                            .replace("&amp;", "&")
+                        logger.lifecycle("[guardrails] SKIPPED — $reason")
+                    }
+                }
+        }
+    }
 }
 
 val gitleaksScan = tasks.register("gitleaksScan") {

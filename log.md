@@ -7,25 +7,24 @@
 
 ## 현재 상태
 
-- **마일스톤:** H — 개발 하네스 구축
+- **마일스톤:** H 완료 → M0 착수 대기
 - **최근 갱신:** 2026-09-02 · Claude Code
 - **브랜치:** feat/harness
-- **verify:** `./gradlew guardrails` 구축 완료 — 문서 줄 수 상한, ddl-auto validate 고정,
-  마이그레이션 해시, log.md 동반 변경, gitleaks(로컬 미설치 시 경고만) 4+1종 가드 녹색
-- **CI:** `.github/workflows/ci.yml` 작성 완료 — verify/guardrails가 PR을 막고
-  evaluation은 야간 스케줄 + 수동 트리거만. 아직 push 안 함(다음 세션에서 브랜치 전체 리뷰 후 푸시).
+- **verify:** 통과
 
 ### 진행 중
 
-- [ ] H-1~H-9 하네스 구축 (`docs/superpowers/plans/2026-09-01-overmind-harness.md`)
+- 없음
 
 ### 다음 할 일
 
-1. `feat/harness` 브랜치 전체 리뷰 후 푸시, GitHub Actions 탭에서 verify/guardrails 초록 확인
+1. M0 도메인 브레인스토밍 (`superpowers:brainstorming`)
+   — review §4의 A-1~A-4를 결정한다
+2. M0 스펙 작성 후 별도 플랜
 
 ### 열려 있는 결정
 
-- 없음 (도메인 결정은 `docs/arch/decisions.md` 참조)
+- `docs/arch/decisions.md`의 "열려 있음" 표 참조
 
 ### 막힌 것
 
@@ -34,6 +33,15 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-02 · Claude Code · Task 11 · (커밋 SHA는 아래 참조)
+
+- **한 일:** 요구사항 문서 작성 — R1~R6과 각 2개씩 AC(총 12개), given/when/then 형식,
+  활성 마일스톤 표기. docs/requirements/.gitkeep 제거. log.md HEAD 블록 갱신(H 완료 → M0 착수 대기).
+- **검증:** `./gradlew verify guardrails` BUILD SUCCESSFUL (8초)
+  — docs/requirements/R1-R6.md 포함 R1~R6 6개 요구사항, AC 12개 확인
+- **결과:** 로컬 커밋 완료, push 미수행 (컨트롤러가 브랜치 전체 리뷰 후 푸시 예정)
+- **다음:** M0 도메인 브레인스토밍
 
 ### 2026-09-02 · Claude Code · Task 10 · (커밋 SHA는 아래 참조)
 

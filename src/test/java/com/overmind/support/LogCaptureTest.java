@@ -52,12 +52,25 @@ class LogCaptureTest {
     void restores_root_log_level_on_close() {
         LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
         ch.qos.logback.classic.Logger rootLogger = context.getLogger(Logger.ROOT_LOGGER_NAME);
+
+        // 다른 테스트가 close()를 아직 실행하지 않은 LogCapture를 남겨 루트 레벨을
+        // TRACE로 오염시켰을 수 있다. 그 우연한 상태를 그대로 levelBefore로 읽으면
+        // "복원 안 됨"과 "우연히 같음"을 구분하지 못해 검사가 무의미해진다. 그래서
+        // TRACE와 절대 같을 수 없는 값(WARN)으로 먼저 강제해 결정론적인 출발점을
+        // 만든다. 테스트가 끝나면 이 테스트가 들어오기 전 상태로 되돌려, 이 테스트
+        // 자신이 뒤따르는 테스트를 오염시키지 않게 한다.
+        Level levelBeforeTest = rootLogger.getLevel();
+        rootLogger.setLevel(Level.WARN);
         Level levelBefore = rootLogger.getLevel();
 
-        try (LogCapture capture = LogCapture.start()) {
-            log.info("아무 로그나 하나 남긴다");
-        }
+        try {
+            try (LogCapture capture = LogCapture.start()) {
+                log.info("아무 로그나 하나 남긴다");
+            }
 
-        assertThat(rootLogger.getLevel()).isEqualTo(levelBefore);
+            assertThat(rootLogger.getLevel()).isEqualTo(levelBefore);
+        } finally {
+            rootLogger.setLevel(levelBeforeTest);
+        }
     }
 }

@@ -7,21 +7,25 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — 설계 확정, 플랜 대기**
-- **최근 갱신:** 2026-09-02 · Claude Code (원격 세션)
-- **브랜치:** `claude/overmind-handover-8njuet` (PR #4 머지 후 `master`에서 다시 땄다)
-- **verify:** L1 20건 통과 / L2는 원격 컨테이너에 Docker가 없어 미실행 · **guardrails:** 11건 통과
+- **마일스톤:** **M0 — Task 1 완료, Task 2 인계 대기**
+- **최근 갱신:** 2026-09-02 · Codex (Task 1 커밋·푸시)
+- **브랜치:** `feat/m0`
+- **verify:** L1 39건 / L2 1건 통과(로컬 Docker) · **guardrails:** 11건 통과. gitleaks 미설치로 로컬 시크릿 스캔 생략
 
 ### 진행 중
 
-- **M0 설계·플랜 확정. 구현 대기.**
+- **Task 1과 인계 규칙 문서를 함께 커밋·푸시한다.** 사용자 요청으로 보관한 문서를
+  이번 변경에 포함한다. Claude Code↔Codex 교차 리뷰는 향후에도 필수 단계가 아니다.
+- **M0 설계·플랜 확정, Task 0 완료, Task 1 구현·검증 완료.**
   - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
   - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — 14개 태스크
+  - `build.gradle.kts`가 Spring Boot 4.1.1 / Hibernate 7.4.5.Final / jakarta.persistence
+    3.2.0 / Flyway 12.4.0 / Spring Framework 7.0.9 위에서 돈다. 자세한 내용은
+    `.superpowers/sdd/2026-09-02-overmind-m0/task-0-report.md`
 
 ### 다음 할 일
 
-1. 플랜 Task 1부터 실행한다. `superpowers:subagent-driven-development` 또는
-   `superpowers:executing-plans`를 쓴다
+1. 기존 PR의 CI 결과를 확인하고 병합은 별도 요청에 따른다. Task 2는 별도 인계 시 시작한다.
 2. **Task 10은 사용자 승인이 필요하다** — 의존성 추가(`CLAUDE.md` 권한 표)
 3. **Task 9는 게이트 완화다** — AR-3이 MCP SDK를 `adapter.out` 밖에서 금지하는데
    MCP 서버는 진입 어댑터다. 규칙을 두 갈래로 나눈다. 리뷰에서 가장 주의 깊게 볼 지점
@@ -29,6 +33,9 @@
 
 ### 확정된 결정
 
+- **작업 절차 — 교차 리뷰 선택 사항** (2026-09-02, 사용자 결정).
+  Claude Code↔Codex 리뷰를 자동 요구하지 않는다. 스펙·diff 자체 대조와 두 기계
+  게이트는 유지한다. 상세 규칙은 `docs/harness/30-loop.md`를 따른다.
 - **A-1~A-4** — M0 설계가 닫았다. Async only / Replay 불변식 / 호출자 제공 idempotency
   key / 실행된 단계의 버전만 기록
 - **D-G — Spring Boot 4.1.1로 올린다** (사용자 승인). D-B의 Boot 3 부분을 대체한다.
@@ -64,11 +71,80 @@
 
 ### 막힌 것
 
-- 없음
+- 없음. 사용자가 교차 리뷰를 필수 절차에서 제외했으므로 이전 리뷰 호출 차단은
+  Task 1 완료를 막지 않는다.
 
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-02 · Codex · Task 1 커밋·푸시와 교차 리뷰 정책 변경 · 본 커밋(git log 참조)
+
+- **한 일:** 사용자가 앞으로 Claude Code 교차 리뷰 없이 진행하도록 지시하고 commit&push를 승인했다. 필수 교차 리뷰를 작업 루프에서 제거하고, 기존에 보관하던 인계 문서를 Task 1 구현과 함께 포함했다.
+- **결과:** 스펙·diff 자체 대조 후 verify·guardrails 통과(exit 0). 제품 코드가 같아 L1 39건 / L2 1건의 기존 성공 결과는 UP-TO-DATE로 재사용됐고, guardrail 11건은 문서 변경을 반영해 다시 통과했다. gitleaks 미설치로 로컬 시크릿 스캔은 생략됐다. Claude Code 교차 리뷰는 사용자 결정에 따라 수행하지 않았다.
+- **함정:** 이전 세션의 리뷰 호출 차단은 외부 전송 승인을 우회해 해결한 것이 아니다. 사용자가 교차 리뷰 자체를 필수 절차에서 제외했으며, 앞으로도 별도 요청 없이 다른 도구로 리뷰를 보내지 않는다. 문서 변경을 반영한 뒤 두 게이트를 다시 실행한다.
+- **다음:** 현재 브랜치의 기존 PR에서 CI를 확인한다. PR 병합과 Task 2 구현은 이번 요청에 포함하지 않는다.
+
+### 2026-09-02 · Codex · Task 1 도메인 값 객체 구현·검증 · 미커밋(기준 c9e9bd0)
+
+- **한 일:** 사용자 요청대로 Task 0 PR 이후 현재 브랜치에서 Task 1만 이어받았다. 승인된 인계 문서 변경을 보존하며 값 객체를 TDD로 구현했다. 정상 입력은 정규화하지 않아 이후 멱등 비교에서 원문 차이가 유지된다.
+- **결과:** 기준 L1 20건 통과 → 새 API 부재로 RED 컴파일 실패 → 도메인 19건과 아키텍처 5건 GREEN. API 호환 record 변이에서 INV-02가 실제 실패한 뒤 원래 final class로 복원했다. 최종 verify·guardrails는 L1 39 / L2 1 / guardrail 11건 통과(exit 0). 코드와 스펙을 자체 대조했으며 Claude Code 교차 리뷰는 자동 승인 거부로 미실시다. gitleaks 미설치로 시크릿 스캔은 생략됐다.
+- **함정:** 플랜의 단순 record 예시는 factory와 utf8Size가 없어 컴파일 실패로 끝날 수 있으므로 변이 확인에서는 공개 API를 유지해 toString 게이트의 실패를 확인했다. SDD 셸 스크립트의 basename/dirname 실행이 실패해 PowerShell로 동일한 T1 절을 추출했다. 최종 게이트는 Git Bash 경로를 PATH에 추가하고 결과를 build/codex-t1 아래로 분리해 실행했다. FixtureLlmPort는 M0에 LLM 호출 경로가 없어 기존 결정대로 M2 이월을 유지한다.
+- **다음:** Claude Code 교차 리뷰 후 T1과 보존한 인계 문서를 함께 커밋·푸시한다. 이번에는 커밋·푸시·PR 변경이나 Task 2 구현을 하지 않았다.
+
+### 2026-09-02 · Codex · 태스크 인계 규칙 명시 · 미커밋(Task 1에 포함 예정)
+
+- **한 일:** 사용자와 합의한 Claude Code↔Codex 태스크 인계 절차와 조회·리뷰만 한 세션의 파일·로그 수정 예외를 명시했다. 규약 본문은 harness에 두고 AGENTS.md는 해당 문서로 안내한다.
+- **결과:** 문서 간 적용 범위와 차이를 검토했다. 제품 코드 변경이 없어 verify·guardrails는 재실행하지 않았다. Task 1 커밋 전에 두 게이트를 실행한다.
+- **함정:** 상태 확인 요청을 다음 구현이나 로그 작성 승인으로 해석하지 않는다. 이번 문서 변경은 사용자가 별도로 승인했으며, Task 0 마무리에 끼워 넣지 않고 Codex의 Task 1 커밋·푸시에 포함하도록 미커밋으로 둔다.
+- **다음:** Claude Code가 Task 0의 커밋·푸시·PR 병합을 마치고 사용자가 Task 1을 인계하면, 미커밋 문서 변경을 보존한 채 최신 master 기준으로 Task 1을 구현한다.
+
+### 2026-09-02 · Claude Code · Task 0 — Spring Boot 4.1.1 상승 · (커밋 SHA는 아래 참조)
+
+- **한 일:** 플랜 Task 0 브리프대로 상승 전 상태를 먼저 기록한 뒤(초록: L1 20 / L2 1 /
+  guardrail 11) `build.gradle.kts`의 `org.springframework.boot` 플러그인을 3.5.0 →
+  4.1.1로 올리고 `clean verify guardrails`로 무엇이 깨지는지 관찰했다. 두 가지가 깨졌다.
+  - **Jackson 2 → Jackson 3.** Boot 4의 `spring-boot-starter-web`이 이제
+    `tools.jackson.core:jackson-databind`(Jackson 3)를 기본으로 끌어오고
+    `com.fasterxml.jackson.databind`(Jackson 2)는 더 이상 전이 의존성에 없다.
+    테스트 지원 코드 `FixtureLlmPort`(L2 픽스처 재생용, record 두 개만 직렬화)가
+    Jackson 2 API를 임포트해 컴파일이 깨졌다. 별도 Jackson 2 의존성을 추가하는 대신
+    `import com.fasterxml.jackson.databind.ObjectMapper` →
+    `import tools.jackson.databind.ObjectMapper` 한 줄만 바꿨다 — 이미 클래스패스에
+    있는 Boot 4 기본 Jackson 3 API로 옮긴 것이고 나머지 코드는 그대로 컴파일된다.
+  - **Flyway 자동설정이 별도 아티팩트로 분리됐다.** Boot 4에서
+    `org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration`이
+    `spring-boot-autoconfigure`가 아니라 신설된 `org.springframework.boot:spring-boot-flyway`
+    (그리고 스타터 `spring-boot-starter-flyway`)로 옮겨갔다. `flyway-core`를 직접
+    `implementation`으로 물던 기존 방식은 컴파일도 되고 `flyway-database-postgresql`도
+    그대로 통과했지만, **자동설정 클래스 자체가 클래스패스에 없어 Flyway 빈이 하나도
+    안 뜨고 마이그레이션이 조용히 스킵됐다.** `FlywayMigrationTest`가
+    `pg_extension`에서 `vector` 0건으로 실패해서 드러났다 — 컴파일 에러가 아니라
+    런타임 조용한 실패였다. `ApplicationContext.getBeanDefinitionNames()`로 flyway
+    관련 빈이 전무함을 직접 확인한 뒤(임시 디버그 코드, 확인 후 원본과 바이트 단위로
+    동일하게 복원 — `git diff`로 무변경 확인), `implementation("org.flywaydb:flyway-core")`를
+    `implementation("org.springframework.boot:spring-boot-starter-flyway")`로 교체했다.
+    `runtimeOnly("org.flywaydb:flyway-database-postgresql")`은 그대로 둔다 — 스타터가
+    DB별 모듈까지 끌어오지 않는다. 교체 후 `flywayInitializer`·`flyway` 빈이 뜨고
+    마이그레이션이 실행되는 로그(`Creating Schema History table...`)를 직접 봤다.
+  - `ddl-auto: validate`, ArchUnit, Testcontainers BOM(1.20.4 고정)은 브리프 예측대로
+    영향 없었다 — 엔티티가 아직 없고 컨테이너도 그대로 떴다.
+- **결과:** `./gradlew clean verify guardrails` BUILD SUCCESSFUL. 바닥 개수가 상승 전과
+  **정확히 동일**하다 — `test` 20건, `integrationTest` 1건, `guardrailTest` 11건(브리프의
+  "7건"은 오래된 숫자이고, 실제 상승 전 베이스라인도 11건이었다 — 개수 대조는 브리프 상수가
+  아니라 Step 1에서 직접 관찰한 베이스라인과 했다). 해상된 버전: Spring Boot 4.1.1 /
+  Spring Framework 7.0.9 / Hibernate 7.4.5.Final / jakarta.persistence 3.2.0 /
+  Flyway 12.4.0 — 브리프 표와 일치. `guardrails`는 gitleaks 미설치 경고만 내고 통과.
+- **함정:** **컴파일 에러(Jackson)와 조용한 런타임 스킵(Flyway)은 다르게 다뤄야 한다.**
+  전자는 빌드가 바로 잡아 주지만, 후자는 `verify`가 "빌드는 성공, 테스트 1건 중 1건
+  실패"로만 보여줘서 원인이 Flyway 자동설정 분리라는 것을 스택 트레이스가 알려주지
+  않았다. 로그에 Flyway 관련 줄이 **한 줄도 없다**는 부재 자체가 단서였다 — Hikari
+  풀 다음에 바로 Hibernate가 뜨는 순서가 상승 전과 달랐다. 빈 목록을 직접 찍어보고서야
+  자동설정 클래스 자체가 없다는 것을 확인했다. **의존성이 컴파일되고 러타임 스킵도 없이
+  통과하는 형태의 "깨짐"은 이 저장소의 0건 실행 바닥이 못 잡는다** — 바닥은 테스트
+  0건 실행만 잡지, 테스트가 도는데 자동설정 빈이 안 뜨는 것은 못 잡는다. 이번에는
+  `FlywayMigrationTest` 자체가 그 바닥 역할을 대신했다.
+- **다음:** 플랜 Task 1부터 실행
 
 ### 2026-09-02 · Claude Code (원격 세션) · Codex 리뷰 5건 반영 · claude/overmind-handover-8njuet
 

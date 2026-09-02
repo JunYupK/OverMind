@@ -37,7 +37,7 @@ OverMind는 여러 AI 클라이언트(Claude Chat / ChatGPT / Claude Code / Code
 | 세션을 막 시작함 | `docs/harness/00-start-here.md` |
 | 파일이 어디 있는지 모름 | `docs/harness/10-repo-map.md` |
 | 빌드·테스트를 돌리려 함 | `docs/harness/20-build-and-test.md` |
-| 태스크를 구현하려 함 | `docs/harness/30-loop.md` |
+| 태스크를 구현하거나 다른 도구에서 인계받음 | `docs/harness/30-loop.md` |
 | 커밋·푸시·마이그레이션·시크릿 | `docs/harness/40-guardrails.md` (커맨드는 `./gradlew guardrails`) |
 | 남의 코드를 리뷰하려 함 | `docs/harness/50-review-protocol.md` |
 | 이 변경이 무엇을 깨면 안 되는지 확인 | `docs/harness/60-invariants.md` |
@@ -52,12 +52,9 @@ OverMind는 여러 AI 클라이언트(Claude Chat / ChatGPT / Claude Code / Code
 
 ## 세션 종료 절차
 
-1. `log.md` HEAD 블록을 현재 상태로 덮어쓴다.
-2. `## 세션 기록` 바로 아래에 새 항목을 추가한다. 필드는 5개 고정:
-   제목줄(날짜 · 도구 · 태스크 · 커밋 SHA) / 한 일 / 결과 / 함정 / 다음.
-3. **git이 기록하는 것은 쓰지 않는다.** diff·파일 목록은 git에 있다.
-   log.md에는 왜 그렇게 했는지, 시도했다 버린 것, 함정, 열려 있는 결정만 쓴다.
-4. 두 변경을 같은 커밋에 넣는다.
+적용 대상, 조회·리뷰만 한 세션의 예외, 기록 형식은
+`docs/harness/00-start-here.md`의 "세션 종료"를 따른다.
+태스크 인계와 다음 태스크 착수는 `docs/harness/30-loop.md`의 "태스크 인계"를 따른다.
 
 ## 이 파일의 제약
 

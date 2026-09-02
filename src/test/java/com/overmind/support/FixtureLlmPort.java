@@ -1,6 +1,6 @@
 package com.overmind.support;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.overmind.application.port.LlmPort;
 import com.overmind.application.port.LlmRequest;
 import com.overmind.application.port.LlmResponse;

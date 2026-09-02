@@ -8,9 +8,8 @@
 - 구현 작업은 `superpowers:test-driven-development`를 따른다.
 - 버그·테스트 실패를 만나면 `superpowers:systematic-debugging`을 먼저 쓴다.
 - 새 기능·설계 변경은 `superpowers:brainstorming`을 먼저 쓴다.
-- 리뷰는 **자기가 구현한 코드를 자기가 리뷰하지 않는다.**
-  Claude Code가 구현했으면 리뷰는 `/codex`로 넘긴다.
-  자세한 규칙은 `docs/harness/50-review-protocol.md`.
+- 리뷰 수행 여부와 담당은 `docs/harness/30-loop.md`를 따른다.
+  요청받은 리뷰의 판정 규칙은 `docs/harness/50-review-protocol.md`.
 - `.claude/skills/`에 같은 스킬들이 복사돼 있어 프로젝트 스킬로도 보인다.
   **플러그인의 `superpowers:*`를 쓴다** — 복사본은 6.3.0 고정이고 플러그인이 최신이다.
   복사본은 플러그인이 없는 도구(Codex 등)를 위한 것이다.

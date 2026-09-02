@@ -26,7 +26,7 @@ Claude Code에서는 두 벌이 모두 보인다 — 플러그인의 `superpower
 
 예를 들어 `subagent-driven-development`는 "태스크마다 새 서브에이전트를 띄우고
 구현하지 않은 도구가 리뷰한다"고 지시한다. 서브에이전트를 띄우는 기능이 없는 도구라면
-컨텍스트 격리는 포기하고 같은 루프(태스크 → `./gradlew verify` → 커밋 → 교차 리뷰)를
+컨텍스트 격리는 포기하고 `docs/harness/30-loop.md`의 작업 루프를
 한 세션 안에서 순차로 돌면 된다. 절차의 값은 대부분 게이트 순서에 있지 격리에 있지 않다.
 
 무엇이 되고 무엇이 안 되는지는 도구마다 다르니, **읽고 판단해서 할 수 있는 만큼 따른다.**
@@ -45,8 +45,9 @@ Claude Code에서는 두 벌이 모두 보인다 — 플러그인의 `superpower
 | "다 됐다"고 말하기 직전 | `verification-before-completion` |
 | 브랜치를 마무리할 때 | `finishing-a-development-branch` |
 
-교차 리뷰 규칙(구현한 도구가 자기 코드를 리뷰하지 않는다)은 이 스킬들이 아니라
-`docs/harness/50-review-protocol.md`가 정한다. 충돌하면 그쪽이 우선이다.
+리뷰 수행 여부와 도구 간 교차 리뷰 정책은 `docs/harness/30-loop.md`가 정한다.
+요청받은 리뷰의 판정은 `docs/harness/50-review-protocol.md`를 따른다.
+스킬과 충돌하면 harness가 우선이다.
 
 ## 갱신 방법
 

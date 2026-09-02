@@ -8,13 +8,15 @@
 | 스키마 | `spring.jpa.hibernate.ddl-auto: validate` 고정 |
 | 마이그레이션 | 이미 커밋된 `V*__*.sql`은 수정 불가 (해시 비교) |
 | 로그 | 아래 감시 경로 변경 시 `log.md` 동반 변경 (같은 PR 범위 안) |
+| 빈 게이트 | `test`/`integrationTest`/`guardrailTest`가 0건 실행하면 실패 |
+| 시크릿 | gitleaks 스캔 |
 
 ### log.md 감시 경로
 
 | 부류 | 경로 |
 |---|---|
 | 제품 코드 | `src/**` |
-| 게이트 기계 | `build.gradle.kts`, `.github/**`, `docs/harness/**` |
+| 게이트 기계 | `build.gradle.kts`, `settings.gradle.kts`, `.github/**`, `docs/harness/**` |
 | 설계와 결정 | `docs/superpowers/**`, `docs/arch/**`, `docs/requirements/**`, `AGENTS.md`, `CLAUDE.md` |
 
 설계 문서를 넣은 이유는, 스펙이나 플랜만 쓰는 세션은 코드를 한 줄도 건드리지 않을 수
@@ -23,13 +25,11 @@
 이 목록은 `AGENTS.md` 절대 규칙 3, 그리고 `LogUpdatedGuardTest`의 `WATCHED_PREFIXES` /
 `WATCHED_FILES`와 **같아야 한다.** 셋 중 하나만 고치면 문서가 말하는 규칙과 강제되는
 규칙이 갈라진다.
-| 빈 게이트 | `test`/`integrationTest`/`guardrailTest`가 0건 실행하면 실패 |
-| 시크릿 | gitleaks 스캔 |
 
 로그 가드의 범위는 **커밋이 아니라 PR(브랜치) 범위**다 — `baseRef...HEAD`를 본다.
 브랜치 안 어딘가에서 `log.md`가 갱신되면 통과한다. AGENTS.md 절대 규칙 3이 같은 범위로
-진술되어 있다. 감시 경로에 게이트 기계 자체(`build.gradle.kts`, `.github/`,
-`docs/harness/`)가 들어가는 이유는, 게이트를 고치는 변경이야말로
+진술되어 있다. 감시 경로에 게이트 기계 자체(`build.gradle.kts`, `settings.gradle.kts`,
+`.github/`, `docs/harness/`)가 들어가는 이유는, 게이트를 고치는 변경이야말로
 "왜 그렇게 했는지"가 git diff에 남지 않는 변경이기 때문이다.
 
 빈 게이트 가드(`*NotEmpty` 태스크)는 게이트가 **아무것도 실행하지 않고 통과하는 것**을 막는다.

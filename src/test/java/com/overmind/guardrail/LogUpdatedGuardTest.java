@@ -76,9 +76,11 @@ class LogUpdatedGuardTest {
      *
      * <ol>
      *   <li><b>제품 코드</b> — {@code src/}
-     *   <li><b>게이트 기계 자체</b> — {@code build.gradle.kts}, {@code .github/},
-     *       {@code docs/harness/}. 게이트를 고치는 변경이야말로 "왜 그렇게 했는지"가
-     *       git diff에 안 남는 변경이다.
+     *   <li><b>게이트 기계 자체</b> — {@code build.gradle.kts},
+     *       {@code settings.gradle.kts}, {@code .github/}, {@code docs/harness/}.
+     *       게이트를 고치는 변경이야말로 "왜 그렇게 했는지"가 git diff에 안 남는
+     *       변경이다. 빌드 설정은 두 파일로 갈라져 있으므로 둘 다 본다 — 한쪽만 보면
+     *       모듈 추가·툴체인 교체가 기록 없이 지나간다.
      *   <li><b>설계와 결정</b> — {@code docs/superpowers/}, {@code docs/arch/},
      *       {@code docs/requirements/}, {@code AGENTS.md}, {@code CLAUDE.md}.
      *       스펙·플랜을 쓰는 세션은 코드를 한 줄도 안 건드릴 수 있는데, 그러면 설계
@@ -100,7 +102,7 @@ class LogUpdatedGuardTest {
                     "docs/requirements/");
 
     private static final List<String> WATCHED_FILES =
-            List.of("build.gradle.kts", "AGENTS.md", "CLAUDE.md");
+            List.of("build.gradle.kts", "settings.gradle.kts", "AGENTS.md", "CLAUDE.md");
 
     /**
      * 변경 경로를 받아오는 명령. 테스트가 같은 인자를 쓰므로 {@code -z}가 빠지면 드러난다.

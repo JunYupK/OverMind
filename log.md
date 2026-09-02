@@ -7,14 +7,16 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — Task 0 완료(Spring Boot 4.1.1 상승), Task 1부터 대기**
-- **최근 갱신:** 2026-09-02 · Claude Code (로컬 세션)
+- **마일스톤:** **M0 — Task 1 완료, Task 2 인계 대기**
+- **최근 갱신:** 2026-09-02 · Codex (Task 1 커밋·푸시)
 - **브랜치:** `feat/m0`
-- **verify:** L1 20건 / L2(integrationTest) 1건 통과(로컬 Docker) · **guardrails:** 11건 통과
+- **verify:** L1 39건 / L2 1건 통과(로컬 Docker) · **guardrails:** 11건 통과. gitleaks 미설치로 로컬 시크릿 스캔 생략
 
 ### 진행 중
 
-- **M0 설계·플랜 확정, Task 0(플랫폼 상승) 완료.**
+- **Task 1과 인계 규칙 문서를 함께 커밋·푸시한다.** 사용자 요청으로 보관한 문서를
+  이번 변경에 포함한다. Claude Code↔Codex 교차 리뷰는 향후에도 필수 단계가 아니다.
+- **M0 설계·플랜 확정, Task 0 완료, Task 1 구현·검증 완료.**
   - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
   - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — 14개 태스크
   - `build.gradle.kts`가 Spring Boot 4.1.1 / Hibernate 7.4.5.Final / jakarta.persistence
@@ -23,8 +25,7 @@
 
 ### 다음 할 일
 
-1. 플랜 Task 1부터 실행한다. `superpowers:subagent-driven-development` 또는
-   `superpowers:executing-plans`를 쓴다
+1. 기존 PR의 CI 결과를 확인하고 병합은 별도 요청에 따른다. Task 2는 별도 인계 시 시작한다.
 2. **Task 10은 사용자 승인이 필요하다** — 의존성 추가(`CLAUDE.md` 권한 표)
 3. **Task 9는 게이트 완화다** — AR-3이 MCP SDK를 `adapter.out` 밖에서 금지하는데
    MCP 서버는 진입 어댑터다. 규칙을 두 갈래로 나눈다. 리뷰에서 가장 주의 깊게 볼 지점
@@ -32,6 +33,9 @@
 
 ### 확정된 결정
 
+- **작업 절차 — 교차 리뷰 선택 사항** (2026-09-02, 사용자 결정).
+  Claude Code↔Codex 리뷰를 자동 요구하지 않는다. 스펙·diff 자체 대조와 두 기계
+  게이트는 유지한다. 상세 규칙은 `docs/harness/30-loop.md`를 따른다.
 - **A-1~A-4** — M0 설계가 닫았다. Async only / Replay 불변식 / 호출자 제공 idempotency
   key / 실행된 단계의 버전만 기록
 - **D-G — Spring Boot 4.1.1로 올린다** (사용자 승인). D-B의 Boot 3 부분을 대체한다.
@@ -67,11 +71,33 @@
 
 ### 막힌 것
 
-- 없음
+- 없음. 사용자가 교차 리뷰를 필수 절차에서 제외했으므로 이전 리뷰 호출 차단은
+  Task 1 완료를 막지 않는다.
 
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-02 · Codex · Task 1 커밋·푸시와 교차 리뷰 정책 변경 · 본 커밋(git log 참조)
+
+- **한 일:** 사용자가 앞으로 Claude Code 교차 리뷰 없이 진행하도록 지시하고 commit&push를 승인했다. 필수 교차 리뷰를 작업 루프에서 제거하고, 기존에 보관하던 인계 문서를 Task 1 구현과 함께 포함했다.
+- **결과:** 스펙·diff 자체 대조 후 verify·guardrails 통과(exit 0). 제품 코드가 같아 L1 39건 / L2 1건의 기존 성공 결과는 UP-TO-DATE로 재사용됐고, guardrail 11건은 문서 변경을 반영해 다시 통과했다. gitleaks 미설치로 로컬 시크릿 스캔은 생략됐다. Claude Code 교차 리뷰는 사용자 결정에 따라 수행하지 않았다.
+- **함정:** 이전 세션의 리뷰 호출 차단은 외부 전송 승인을 우회해 해결한 것이 아니다. 사용자가 교차 리뷰 자체를 필수 절차에서 제외했으며, 앞으로도 별도 요청 없이 다른 도구로 리뷰를 보내지 않는다. 문서 변경을 반영한 뒤 두 게이트를 다시 실행한다.
+- **다음:** 현재 브랜치의 기존 PR에서 CI를 확인한다. PR 병합과 Task 2 구현은 이번 요청에 포함하지 않는다.
+
+### 2026-09-02 · Codex · Task 1 도메인 값 객체 구현·검증 · 미커밋(기준 c9e9bd0)
+
+- **한 일:** 사용자 요청대로 Task 0 PR 이후 현재 브랜치에서 Task 1만 이어받았다. 승인된 인계 문서 변경을 보존하며 값 객체를 TDD로 구현했다. 정상 입력은 정규화하지 않아 이후 멱등 비교에서 원문 차이가 유지된다.
+- **결과:** 기준 L1 20건 통과 → 새 API 부재로 RED 컴파일 실패 → 도메인 19건과 아키텍처 5건 GREEN. API 호환 record 변이에서 INV-02가 실제 실패한 뒤 원래 final class로 복원했다. 최종 verify·guardrails는 L1 39 / L2 1 / guardrail 11건 통과(exit 0). 코드와 스펙을 자체 대조했으며 Claude Code 교차 리뷰는 자동 승인 거부로 미실시다. gitleaks 미설치로 시크릿 스캔은 생략됐다.
+- **함정:** 플랜의 단순 record 예시는 factory와 utf8Size가 없어 컴파일 실패로 끝날 수 있으므로 변이 확인에서는 공개 API를 유지해 toString 게이트의 실패를 확인했다. SDD 셸 스크립트의 basename/dirname 실행이 실패해 PowerShell로 동일한 T1 절을 추출했다. 최종 게이트는 Git Bash 경로를 PATH에 추가하고 결과를 build/codex-t1 아래로 분리해 실행했다. FixtureLlmPort는 M0에 LLM 호출 경로가 없어 기존 결정대로 M2 이월을 유지한다.
+- **다음:** Claude Code 교차 리뷰 후 T1과 보존한 인계 문서를 함께 커밋·푸시한다. 이번에는 커밋·푸시·PR 변경이나 Task 2 구현을 하지 않았다.
+
+### 2026-09-02 · Codex · 태스크 인계 규칙 명시 · 미커밋(Task 1에 포함 예정)
+
+- **한 일:** 사용자와 합의한 Claude Code↔Codex 태스크 인계 절차와 조회·리뷰만 한 세션의 파일·로그 수정 예외를 명시했다. 규약 본문은 harness에 두고 AGENTS.md는 해당 문서로 안내한다.
+- **결과:** 문서 간 적용 범위와 차이를 검토했다. 제품 코드 변경이 없어 verify·guardrails는 재실행하지 않았다. Task 1 커밋 전에 두 게이트를 실행한다.
+- **함정:** 상태 확인 요청을 다음 구현이나 로그 작성 승인으로 해석하지 않는다. 이번 문서 변경은 사용자가 별도로 승인했으며, Task 0 마무리에 끼워 넣지 않고 Codex의 Task 1 커밋·푸시에 포함하도록 미커밋으로 둔다.
+- **다음:** Claude Code가 Task 0의 커밋·푸시·PR 병합을 마치고 사용자가 Task 1을 인계하면, 미커밋 문서 변경을 보존한 채 최신 master 기준으로 Task 1을 구현한다.
 
 ### 2026-09-02 · Claude Code · Task 0 — Spring Boot 4.1.1 상승 · (커밋 SHA는 아래 참조)
 

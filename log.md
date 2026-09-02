@@ -14,18 +14,18 @@
 
 ### 진행 중
 
-- **M0 설계 확정.** `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인).
-  observation 영속화 + 원격 `remember_memory`/`recall_memory` MCP 도구.
-  **canonicalization 없음.** recall은 USER + 선택한 PROJECT를 `observed_at` 최신순 keyset로 반환
-- 다음은 이 스펙으로 `superpowers:writing-plans`를 돌리는 것
+- **M0 설계·플랜 확정. 구현 대기.**
+  - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
+  - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — 14개 태스크
 
 ### 다음 할 일
 
-1. M0 writing-plan 작성
-2. 플랜에서 반드시 묶을 것 — **`FixtureLlmPort` 호출자.** 지금은 호출자가 없어 죽은 코드다.
-   다만 M0 스펙 §9는 실 LLM L3가 없다고 못 박았으므로, 이 장치를 M0에서 살릴 수 있는지부터 본다.
-   살릴 수 없으면 M2로 미루고 그 사실을 여기 적는다
-3. 구현 순서는 플랜을 따른다. 설계를 다시 열지 않는다
+1. 플랜 Task 1부터 실행한다. `superpowers:subagent-driven-development` 또는
+   `superpowers:executing-plans`를 쓴다
+2. **Task 10은 사용자 승인이 필요하다** — 의존성 추가(`CLAUDE.md` 권한 표)
+3. **Task 9는 게이트 완화다** — AR-3이 MCP SDK를 `adapter.out` 밖에서 금지하는데
+   MCP 서버는 진입 어댑터다. 규칙을 두 갈래로 나눈다. 리뷰에서 가장 주의 깊게 볼 지점
+4. 설계를 다시 열지 않는다. 스펙과 어긋나는 것이 나오면 스펙을 고치고 그 사실을 남긴다
 
 ### 확정된 결정 — M0 설계가 닫은 것
 
@@ -44,7 +44,12 @@ A-4 실행된 단계의 버전만 기록. 전부 `docs/arch/decisions.md` 확정
   (google-java-format으로는 도달할 수 없는 형태라 우선순위를 낮췄다)
 - `@Tag(상수)` 거짓 양성 — 안전한 방향으로 실패하므로 의도적으로 남겼다
 - 바닥 검사는 **발견된** 테스트를 세지 **실행된** 것을 세지 않는다
-- AR-3(LLM SDK 격리)은 대상 SDK가 아직 의존성에 없어 사실상 공허하다
+- AR-3(LLM SDK 격리)은 대상 SDK가 아직 의존성에 없어 사실상 공허하다.
+  플랜 Task 10이 MCP SDK를 들이면 절반은 실물이 된다
+- **`FixtureLlmPort`는 M0에서 살아나지 않는다 — M2로 미룬다.** 인수인계에는 "M0 첫 L2
+  태스크의 acceptance criterion으로 묶어야 죽지 않는다"고 되어 있었으나, 스펙 §9는 M0에
+  실 LLM L3가 없다고 못 박았고 §11은 LLM extraction을 범위 밖으로 뒀다. **M0에는 LLM을
+  부를 곳이 아예 없어 묶을 자리가 없다.** 억지로 묶으면 스펙과 충돌한다
 - **감시 경로 목록이 세 곳에 있는데 셋이 같은지 검사하는 것이 없다** — 가드 코드 /
   `AGENTS.md` 절대 규칙 3 / `40-guardrails.md`. 주석만 "같아야 한다"고 말한다
 - `OVERMIND_LLM_API_KEY` 시크릿 미등록 — 실 L3 실행 전에 필요하다
@@ -57,6 +62,39 @@ A-4 실행된 단계의 버전만 기록. 전부 `docs/arch/decisions.md` 확정
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-02 · Claude Code (원격 세션) · M0 구현 플랜 작성 · claude/overmind-handover-8njuet
+
+- **한 일:** `superpowers:writing-plans`로 M0 구현 플랜을 썼다. 14개 태스크, 각 태스크가
+  독립적으로 테스트 가능한 산출물로 끝난다. 쓰기 전에 실제 트리와 Maven Central을 확인해
+  **플랜이 존재하지 않는 것을 가리키지 않게** 했다
+- **결과:** `docs/superpowers/plans/2026-09-02-overmind-m0.md`. `guardrails` 7건 / L1 20건 통과
+- **함정:** 확인하지 않았으면 플랜이 통째로 틀렸을 사실 세 가지가 나왔다.
+  1. **AR-3과 MCP 서버가 충돌한다.** 규칙이 `io.modelcontextprotocol..`을 `adapter.out`
+     밖에서 금지하는데 MCP 서버는 **진입** 어댑터다. 스펙 §3대로 짜면 게이트가 실패한다.
+     규칙을 지우는 대신 LLM SDK와 MCP SDK로 나누고, "코어는 여전히 모른다"를 별도 규칙으로
+     못 박는 것으로 플랜에 넣었다(Task 9)
+  2. **Spring AI 2.x는 쓸 수 없다.** `spring-ai-starter-mcp-server-webmvc:2.0.1`의 POM이
+     `spring-boot-starter-web:4.1.1`을 참조한다 — Boot 4를 요구한다. Boot 3.5에 물리는
+     마지막 라인은 **1.1.8**(Boot 3.5.15)이다. 최신 버전을 집었으면 Task 10에서 막혔다
+  3. **도메인에 `record`를 쓸 수 없다.** INV-02가 `domain..`의 `toString`을 금지하는데
+     record는 `toString`을 바이트코드로 생성한다. 스펙 §8이 "record 대신 안전한 immutable
+     class를 고려한다"고 한 것이 이미 게이트로 강제되고 있었다 — 고려가 아니라 제약이다.
+  **교훈: 플랜은 스펙만 보고 쓸 수 없다.** 스펙이 옳아도 그것을 받는 트리의 게이트와
+  충돌하면 구현 단계에서 멈춘다. 충돌은 스펙에도 트리에도 안 적혀 있고 둘을 겹쳐 볼 때만 보인다.
+  넷째: MCP 도구 등록 API와 프로토콜 설정 키는 **확정하지 못했다.** 클래스 이름을 지어내는
+  대신 해석된 jar를 직접 열어 보는 명령을 플랜의 첫 스텝으로 넣었다. 모르는 것을 아는 척한
+  플랜은 실행자를 더 크게 넘어뜨린다
+  다섯째: **플랜 문서 자체가 시크릿 게이트를 밟았다.** 예시로 적은
+  `overmind.security.cursor-secret=<32자 hex>` 두 줄이 gitleaks의 `generic-api-key`에
+  엔트로피 4.0으로 걸려 CI `guardrails`가 빨개졌다(PR #5, `bab1035`). 로컬에서는
+  gitleaks가 없어 조용히 건너뛰므로 초록이었다 — **로컬 초록이 CI 초록이 아니라는 것을
+  또 확인했다.** `.gitleaks.toml` 예외로 무마하지 않고, 낱말 반복으로 길이를 채우도록
+  테스트 코드를 고쳤다. 잡은 것이 진짜 시크릿이 아니어도 잡은 규칙은 옳다.
+  검증은 gitleaks 바이너리를 받아 직접 돌려서 했다 — 푸시된 커밋에서 `leaks found: 2`,
+  고친 트리에서 `no leaks found`
+- **다음:** 플랜 Task 1 실행. Task 10 전에 의존성 승인을 받는다
+
 
 ### 2026-09-02 · Claude Code (원격 세션) · M0 설계 스펙 확보 · claude/overmind-handover-8njuet
 

@@ -36,6 +36,13 @@
 
 ## 세션 기록
 
+### 2026-09-02 13:05 · Claude Code · CI 수정 2
+
+- **한 일:** `.gitignore`의 `out/`을 `/out/`으로 앵커하고, 누락돼 있던 `adapter/out/package-info.java`를 추적에 추가
+- **결과:** PR #1의 `verify` 잡에서 `PackageLayoutTest.base_packages_exist()`가 실패하던 원인 제거. `guardrails` 잡은 이미 통과
+- **함정:** IntelliJ 출력 디렉터리를 무시하려던 `out/`은 앵커가 없어 **모든 깊이의 `out` 디렉터리**에 적용된다. 그래서 아키텍처 패키지 `src/main/java/com/overmind/adapter/out/`이 통째로 커밋에서 빠졌다 — AR-3이 감시해야 할 바로 그 패키지이고, M0의 영속·LLM·임베딩 어댑터가 전부 들어갈 자리다. 로컬 디스크에는 존재하므로 로컬 `verify`는 계속 초록이었고, 새로 클론한 CI에서만 드러났다. 무시 패턴은 의도한 위치에 앵커할 것
+- **다음:** CI 재실행 확인. 머지 전 I-3(`@SpringBootTest` 게이트 우회) 결정 필요
+
 ### 2026-09-02 12:55 · Claude Code · CI 수정
 
 - **한 일:** `gradlew`에 실행 비트 부여 (`git update-index --chmod=+x`)

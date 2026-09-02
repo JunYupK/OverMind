@@ -14,17 +14,24 @@
 | D-E | 테스트 3계층: L1 fake / L2 Testcontainers+녹화재생 / L3 실 LLM | 하네스 스펙 §6 | 2026-09-01 |
 | D-F | 하네스 구축 범위: Walking Skeleton. 평가자는 마일스톤별 활성화 | 하네스 스펙 §1 | 2026-09-01 |
 
-## 열려 있음 — M0 도메인 브레인스토밍에서 결정
+## 열려 있음
 
-| ID | 안건 | 출처 |
-|---|---|---|
-| A-1 | Fast path 유지 vs Async only | review §4 |
-| A-2 | Replay 불변식(observation=event log) 채택 여부 | review §4 |
-| A-3 | `observation.idempotency_key` 구성 방식 | review §4 |
-| A-4 | 파이프라인 버저닝 컬럼 세부 | review §4 |
-| B-1 | Slot Registry 범위 (dynamic slot 폐기 여부) | review §5 |
-| B-2 | Snapshot 테이블화 시점 | review §5 |
-| B-3 | Bootstrap 범위와 비용 상한 수치 | review §5 |
+| ID | 안건 | 출처 | 결정 기한 |
+|---|---|---|---|
+| A-1 | Fast path 유지 vs Async only | review §4 | M0 브레인스토밍 |
+| A-2 | Replay 불변식(observation=event log) 채택 여부 | review §4 | M0 브레인스토밍 |
+| A-3 | `observation.idempotency_key` 구성 방식 | review §4 | M0 브레인스토밍 |
+| A-4 | 파이프라인 버저닝 컬럼 세부 | review §4 | M0 브레인스토밍 |
+| B-1 | Slot Registry 범위 (dynamic slot 폐기 여부) | review §5 | M0 브레인스토밍 |
+| B-2 | Snapshot 테이블화 시점 | review §5 | M0 브레인스토밍 |
+| B-3 | Bootstrap 범위와 비용 상한 **수치** | review §5 | M0 브레인스토밍 |
+| B-4 | L3 비용 상한을 **강제하는 장치** — 호출 수·토큰·금액을 무엇이 세고, 어디서 실행을 중단시키는가 | 스펙 §6.4, R6-AC1 | M5 이전 |
+
+**B-4가 B-3과 별개인 이유:** B-3은 숫자를 정하는 결정이고, B-4는 그 숫자를 지키게 만드는
+기계를 정하는 결정이다. 지금 트리에 있는 것은 `docs/requirements/R1-R6.md` R6-AC1의
+산문뿐이고 `evaluationTest`는 상한 없이 실 LLM을 부른다. 하네스 전수 리뷰가 확인한 것이
+바로 이것이다 — 산문으로만 존재하는 규칙은 강제되지 않는다. L3 스위트가 실제로 비용을
+쓰기 시작하기 전에 장치가 있어야 한다.
 
 ## 반영 대기 결함 — M2 이후 도메인 스펙
 

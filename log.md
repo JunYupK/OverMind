@@ -7,10 +7,10 @@
 
 ## 현재 상태
 
-- **마일스톤:** H 완료 → M0 착수 대기
+- **마일스톤:** H 완료 (전수 리뷰 지적 9건 반영 완료) → M0 착수 대기
 - **최근 갱신:** 2026-09-02 · Claude Code
 - **브랜치:** feat/harness
-- **verify:** 통과
+- **verify:** 통과 / **guardrails:** 통과
 
 ### 진행 중
 
@@ -25,6 +25,8 @@
 ### 열려 있는 결정
 
 - `docs/arch/decisions.md`의 "열려 있음" 표 참조
+- 새로 등록: **B-4 — L3 비용 상한을 강제하는 장치** (M5 이전). 스펙 §6.4가 요구하는
+  하드 비용 상한이 지금은 산문으로만 존재한다
 
 ### 막힌 것
 
@@ -33,6 +35,40 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-02 · Claude Code · 하네스 전수 리뷰 지적 반영 · (커밋 SHA는 아래 참조)
+
+- **한 일:** 브랜치 전수 리뷰가 낸 9건(C-1, C-2, I-1~I-7)을 한 번에 고쳤다.
+  - **C-1** 두 기계 게이트가 아무것도 실행하지 않고 초록이 되던 문제. `test`/`integrationTest`/
+    `guardrailTest`에 0건 실행 바닥(`*NotEmpty` 태스크)을 붙였다. `evaluationTest`는 제외.
+  - **C-2** `updateMigrationChecksums`를 append-only로 바꿨다. 이미 기록된 항목이 바뀌거나
+    사라지면 파일 이름을 대며 실패한다.
+  - **I-1** AGENTS.md 절대 규칙 4에 `guardrails`를 같이 적었다.
+  - **I-2** 로컬–CI 동치 주장을 gitleaks 한 단계만 예외로 좁혔다.
+  - **I-3** `TestTierBoundaryTest` 신설 — 태그 없는 테스트의 `@SpringBootTest`를 막는다.
+  - **I-4** `ProviderNameLeakTest`를 대소문자 무시로 바꾸고 gpt/llama/mistral/bedrock/vertex 추가.
+  - **I-5+I-7** 진술을 강제와 맞췄다(커밋 → PR 범위). 가드 감시 경로에
+    `build.gradle.kts`, `.github/`, `docs/harness/`를 추가했다.
+  - **I-6** JDK 21을 사전 준비에 명시하고 foojay 툴체인 리졸버를 넣었다.
+  - **문서 등록** `decisions.md` 열려 있음 표에 B-4(L3 비용 상한 강제 장치, M5 이전) 추가.
+- **함정 1 — 바닥 검사를 Test 태스크 안에 둘 수 없다.** 테스트 소스가 사라지면 태스크가
+  `NO-SOURCE`가 되고, 그때는 `doLast`도 같이 건너뛴다. 즉 자기가 안 돌았다는 사실을 자기가
+  보고할 수 없다. 그래서 별도 태스크(`*NotEmpty`)를 `dependsOn` + `finalizedBy`로 바깥에 붙였다.
+  JUnit XML의 `tests="N"` 합계를 세는데, Gradle이 `NO-SOURCE`일 때 이전 출력물을 지워 주기
+  때문에 stale 결과로 통과하는 일이 없다 — 이것은 실제로 소스를 치우고 확인했다.
+- **함정 2 — `@SpringBootTest` 검사가 자기 자신을 잡는다.** 파일 본문에 그 문자열이 있는지로
+  판정하면, 그 규칙을 설명하는 javadoc과 실패 메시지 때문에 검사 파일 자신이 위반이 된다.
+  줄을 trim했을 때 애노테이션으로 시작하는 경우만 세도록 좁혔다.
+- **함정 3 — 상속 우회.** 부모에 `@SpringBootTest`를 숨기고 자식은 태그 없이 두는 우회가
+  가능해서, `extends` 사슬을 따라 올라가며 컨텍스트 기동과 태그를 둘 다 본다.
+- **함정 4 — 리포트의 한글이 콘솔에서 깨져 보인다.** 인코딩 문제인 줄 알고
+  `options.encoding = "UTF-8"`을 넣었다가, XML 파일 자체는 정상 UTF-8이고 깨진 것은
+  터미널 렌더링뿐임을 확인하고 되돌렸다. JDK 21은 이미 기본이 UTF-8이다.
+- **검증:** 새 게이트 5개(C-1 두 시연, C-2, I-3, I-4, I-5/I-7)를 전부 **직접 빨간불로 만들어 보고**
+  복원했다. 게이트를 실패시켜 보지 않고 믿은 것이 이번 리뷰 지적의 원인이었으므로 반복하지 않는다.
+  증거는 `.superpowers/sdd/2026-09-01-overmind-harness/final-fix-report.md`.
+- **결과:** `./gradlew verify`, `./gradlew guardrails` 모두 통과. 로컬 커밋만, push 미수행.
+- **다음:** M0 도메인 브레인스토밍. 그 전에 B-4(L3 비용 상한 장치) 결정을 잊지 않는다.
 
 ### 2026-09-02 · Claude Code · Task 11 · (커밋 SHA는 아래 참조)
 

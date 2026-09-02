@@ -88,11 +88,12 @@ class LogUpdatedGuardTest {
      *       진입 문서도 마찬가지다.
      * </ol>
      *
-     * <p>여기 목록은 {@code AGENTS.md} 절대 규칙 3과 {@code docs/harness/40-guardrails.md}에
-     * 적힌 목록과 같아야 한다. 문서가 말하는 규칙과 강제되는 규칙이 갈라지면, 강제되지 않는
-     * 규칙을 강제되는 것처럼 믿게 된다.
+     * <p><b>이 목록이 진실의 원천이다.</b> {@code AGENTS.md} 절대 규칙 3과
+     * {@code docs/harness/40-guardrails.md}의 표는 사본이며,
+     * {@link WatchedPathSyncGuardTest}가 그 사본을 여기와 집합 비교한다. 한쪽만 고치면
+     * 실패한다 — 주석으로 "같아야 한다"고 적어 두는 것은 게이트가 아니다.
      */
-    private static final List<String> WATCHED_PREFIXES =
+    static final List<String> WATCHED_PREFIXES =
             List.of(
                     "src/",
                     ".github/",
@@ -101,7 +102,7 @@ class LogUpdatedGuardTest {
                     "docs/arch/",
                     "docs/requirements/");
 
-    private static final List<String> WATCHED_FILES =
+    static final List<String> WATCHED_FILES =
             List.of("build.gradle.kts", "settings.gradle.kts", "AGENTS.md", "CLAUDE.md");
 
     /**

@@ -13,11 +13,15 @@
 
 ### log.md 감시 경로
 
+<!-- watched-paths:begin — 가드 코드가 진실이다. WatchedPathSyncGuardTest가 대조한다 -->
+
 | 부류 | 경로 |
 |---|---|
 | 제품 코드 | `src/**` |
 | 게이트 기계 | `build.gradle.kts`, `settings.gradle.kts`, `.github/**`, `docs/harness/**` |
 | 설계와 결정 | `docs/superpowers/**`, `docs/arch/**`, `docs/requirements/**`, `AGENTS.md`, `CLAUDE.md` |
+
+<!-- watched-paths:end -->
 
 설계 문서를 넣은 이유는, 스펙이나 플랜만 쓰는 세션은 코드를 한 줄도 건드리지 않을 수
 있기 때문이다. 그러면 설계 세션 하나가 통째로 로그에 흔적을 남기지 않고 지나간다.

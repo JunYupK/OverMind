@@ -22,10 +22,10 @@ import org.junit.jupiter.api.Test;
  * log.md가 갱신되면 통과한다. 커밋 단위 강제는 rebase·squash·fixup과 싸우게 되고,
  * 그 싸움에서 이기지 못하면 가드가 꺼진다. AGENTS.md 절대 규칙 3이 이 범위로 진술되어 있다.
  *
- * <p>감시 경로에 {@code src/} 뿐 아니라 {@code build.gradle.kts}, {@code .github/},
- * {@code docs/harness/}가 들어간다. 이것들이 게이트 기계 자체이기 때문이다.
- * 게이트 결함을 고친 커밋이 아무 기록도 남기지 않고 지나가면, 다음 세션은 그 게이트가
- * 왜 지금 모양인지 알 방법이 없다.
+ * <p>감시 경로는 제품 코드, 게이트 기계 자체, 그리고 설계·결정 문서를 모두 덮는다.
+ * 게이트 결함을 고친 커밋이나 스펙을 쓴 세션이 아무 기록도 남기지 않고 지나가면,
+ * 다음 세션은 그것이 왜 지금 모양인지 알 방법이 없다. 정확한 목록은
+ * {@link #WATCHED_PREFIXES}와 {@link #WATCHED_FILES}에 있다.
  *
  * <p>base ref를 찾을 수 없는 로컬 환경에서는 검사를 건너뛴다. 진짜 게이트는 CI다.
  */
@@ -62,13 +62,35 @@ class LogUpdatedGuardTest {
     /**
      * log.md 동반 갱신을 강제할 경로들.
      *
-     * <p>제품 코드({@code src/})와 <b>게이트 기계 자체</b>를 모두 본다.
-     * 게이트를 고치는 변경이야말로 "왜 그렇게 했는지"가 git diff에 안 남는 변경이다.
+     * <p>세 부류를 본다.
+     *
+     * <ol>
+     *   <li><b>제품 코드</b> — {@code src/}
+     *   <li><b>게이트 기계 자체</b> — {@code build.gradle.kts}, {@code .github/},
+     *       {@code docs/harness/}. 게이트를 고치는 변경이야말로 "왜 그렇게 했는지"가
+     *       git diff에 안 남는 변경이다.
+     *   <li><b>설계와 결정</b> — {@code docs/superpowers/}, {@code docs/arch/},
+     *       {@code docs/requirements/}, {@code AGENTS.md}, {@code CLAUDE.md}.
+     *       스펙·플랜을 쓰는 세션은 코드를 한 줄도 안 건드릴 수 있는데, 그러면 설계
+     *       세션 하나가 통째로 로그에 흔적을 남기지 않고 지나간다. 결정 레지스터와
+     *       진입 문서도 마찬가지다.
+     * </ol>
+     *
+     * <p>여기 목록은 {@code AGENTS.md} 절대 규칙 3과 {@code docs/harness/40-guardrails.md}에
+     * 적힌 목록과 같아야 한다. 문서가 말하는 규칙과 강제되는 규칙이 갈라지면, 강제되지 않는
+     * 규칙을 강제되는 것처럼 믿게 된다.
      */
     private static final List<String> WATCHED_PREFIXES =
-            List.of("src/", ".github/", "docs/harness/");
+            List.of(
+                    "src/",
+                    ".github/",
+                    "docs/harness/",
+                    "docs/superpowers/",
+                    "docs/arch/",
+                    "docs/requirements/");
 
-    private static final List<String> WATCHED_FILES = List.of("build.gradle.kts");
+    private static final List<String> WATCHED_FILES =
+            List.of("build.gradle.kts", "AGENTS.md", "CLAUDE.md");
 
     private static boolean isWatched(String path) {
         return WATCHED_PREFIXES.stream().anyMatch(path::startsWith) || WATCHED_FILES.contains(path);

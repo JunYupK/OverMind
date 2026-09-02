@@ -18,8 +18,10 @@ OverMind는 여러 AI 클라이언트(Claude Chat / ChatGPT / Claude Code / Code
 1. `docs/arch/baseline-v0.1.md`와 `docs/arch/review-v0.1.md`는 **읽기 전용 사료**다.
    결정이 바뀌면 `docs/arch/decisions.md`에 기록하고 사료는 건드리지 않는다.
 2. `log.md`의 과거 세션 기록 항목은 편집하지 않는다. 정정은 새 항목에 쓴다.
-3. `src/`, `build.gradle.kts`, `.github/`, `docs/harness/`를 고쳤으면
-   **같은 PR(브랜치 범위) 안에서** `log.md`를 갱신한다. CI가 강제한다.
+3. 제품 코드(`src/`), 게이트 기계(`build.gradle.kts`, `.github/`, `docs/harness/`),
+   설계·결정 문서(`docs/superpowers/`, `docs/arch/`, `docs/requirements/`,
+   `AGENTS.md`, `CLAUDE.md`) 중 무엇이든 고쳤으면 **같은 PR(브랜치 범위) 안에서**
+   `log.md`를 갱신한다. CI가 강제한다. 스펙만 쓴 세션도 예외가 아니다.
 4. 커밋 전에 `./gradlew verify`와 `./gradlew guardrails`가 **둘 다** 통과해야 한다.
    CI는 두 잡을 따로 돌린다. `verify`만 보면 CI에서 빨간불을 만난다.
 5. 다음은 금지다 — `master`에 `git push --force`, `git reset --hard`,

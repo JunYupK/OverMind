@@ -27,16 +27,22 @@
    MCP 서버는 진입 어댑터다. 규칙을 두 갈래로 나눈다. 리뷰에서 가장 주의 깊게 볼 지점
 4. 설계를 다시 열지 않는다. 스펙과 어긋나는 것이 나오면 스펙을 고치고 그 사실을 남긴다
 
-### 확정된 결정 — M0 설계가 닫은 것
+### 확정된 결정
 
-A-1 Async only / A-2 Replay 불변식 채택 / A-3 호출자 제공 idempotency key /
-A-4 실행된 단계의 버전만 기록. 전부 `docs/arch/decisions.md` 확정 표로 옮겼다.
+- **A-1~A-4** — M0 설계가 닫았다. Async only / Replay 불변식 / 호출자 제공 idempotency
+  key / 실행된 단계의 버전만 기록
+- **D-G — Spring Boot 4.1.1로 올린다** (사용자 승인). D-B의 Boot 3 부분을 대체한다.
+  Java 21 유지(Boot 4 기준선은 Java 17). Spring AI 2.0.1 + MCP SDK 2.0.1
+전부 `docs/arch/decisions.md`에 있다.
 
 ### 열려 있는 결정
 
-- **B-1·B-2·B-3의 기한이 지났다.** 셋 다 "M0 브레인스토밍"이 기한이었는데 M0 설계는
-  이들을 닫지 않고 §11에서 범위 밖으로 미뤘다. 어느 마일스톤에 묶을지 다시 정해야 한다
+- **B-1·B-2·B-3 — 기한이 M0로 확정됐다** (사용자 결정). 구현은 M2 이후지만 **결정은
+  M0가 끝나기 전에** 한다. M0를 매일 써 본 경험이 있어야 slot registry 범위·snapshot
+  시점·bootstrap 수치를 근거를 갖고 정할 수 있다
 - **B-4 — L3 비용 상한을 강제하는 장치** (기한 M5 이전). 여전히 산문뿐이다
+- **감시 경로 세 목록 동기화 검사의 형태** — 어느 쪽이 진실의 원천인지 정해야 한다.
+  사용자에게 선택지를 제시한 상태
 
 ### 이월된 결함 — 닫히지 않았고 각각 이유가 있다
 
@@ -53,7 +59,11 @@ A-4 실행된 단계의 버전만 기록. 전부 `docs/arch/decisions.md` 확정
 - **감시 경로 목록이 세 곳에 있는데 셋이 같은지 검사하는 것이 없다** — 가드 코드 /
   `AGENTS.md` 절대 규칙 3 / `40-guardrails.md`. 주석만 "같아야 한다"고 말한다
 - `OVERMIND_LLM_API_KEY` 시크릿 미등록 — 실 L3 실행 전에 필요하다
-- 원격 브랜치 `feat/harness`, `feat/vendor-skills`, `feat/widen-log-guard` 미삭제
+- **원격 브랜치 3종 미삭제 — 이 환경에서 지울 수 없다.** `feat/harness`,
+  `feat/vendor-skills`, `feat/widen-log-guard` 전부 `--cherry-pick`으로 master에 대응
+  커밋이 있어 삭제해도 잃는 것이 없다. 그런데 `git push --delete`가 **403**이고
+  GitHub MCP에는 브랜치 삭제 도구가 없다. 로컬에서
+  `git push origin --delete <브랜치>`로 지워야 한다
 
 ### 막힌 것
 
@@ -62,6 +72,34 @@ A-4 실행된 단계의 버전만 기록. 전부 `docs/arch/decisions.md` 확정
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-02 · Claude Code (원격 세션) · Boot 4 상승 결정과 플랜 개정 · claude/overmind-handover-8njuet
+
+- **한 일:** 사용자 승인에 따라 세 가지를 반영했다.
+  - **D-G — Spring Boot 4.1.1.** D-B의 Boot 3 부분을 대체한다. 플랜의 플랫폼 상승을
+    **Task 10에서 Task 0으로 앞당겼다** — Task 1~8을 Boot 3.5에서 짜고 테스트한 뒤
+    Hibernate 6→7, jakarta.persistence 3.1→3.2가 발밑에서 바뀌면 전부 다시 돌려야 한다.
+    제품 코드가 한 줄도 없는 지금이 상승 비용이 가장 싸다
+  - **B-1·B-2·B-3 기한을 M0로.** 구현이 M0 밖인 것과 결정이 M0 안인 것은 모순되지 않는다
+  - 원격 브랜치 3종 삭제 시도 — **403으로 실패했다.** 아래 함정 참조
+- **결과:** `guardrails` 7건 / L1 20건 통과, gitleaks `no leaks found`
+- **함정:** **Spring AI 2.0에서 MCP 패키지가 옮겨졌다.** 1.1.x의
+  `io.modelcontextprotocol.server.transport..`가 2.0에서는
+  `org.springframework.ai.mcp.server.webmvc.transport..`이고, 자동설정도
+  `...mcp.server.autoconfigure..` → `...mcp.server.webmvc.autoconfigure..`다.
+  **1.1.x 기준 예제를 그대로 옮기면 컴파일되지 않는다.** jar를 열어 확인했다.
+  둘째, **그래도 AR-3 충돌은 사라지지 않는다.** `mcp-spring-webmvc:2.0.1`이 여전히
+  `io.modelcontextprotocol.sdk:mcp-core`에 의존한다 — 프로토콜 타입은 그 패키지에 남는다.
+  Boot 4로 올리면 Task 9가 필요 없어질까 기대했지만 아니었다.
+  셋째, **gitleaks-action은 워킹트리가 아니라 커밋 범위를 스캔한다.** 앞 세션 기록에
+  적은 시크릿 건은 파일만 고쳐서는 지워지지 않았고, CI가 두 번째로 빨개졌다. 그 문자열이
+  **어떤 커밋에도 없도록** 브랜치 히스토리를 정리해야 했다. `--no-git` 스캔이 초록이라고
+  안심한 것이 오진이었다 — 게이트가 무엇을 스캔하는지 먼저 읽었어야 했다.
+  넷째, **이 환경은 원격 브랜치를 지울 수 없다.** `git push --delete`가 403이고
+  (프록시 로그에는 github.com 거부 기록이 없으므로 자격증명 범위 문제로 보인다),
+  GitHub MCP에도 브랜치 삭제 도구가 없다. push는 되는데 delete는 안 된다
+- **다음:** 감시 경로 세 목록 동기화 검사의 형태를 정한다. 그 뒤 로컬에서 Task 0부터
+
 
 ### 2026-09-02 · Claude Code (원격 세션) · M0 구현 플랜 작성 · claude/overmind-handover-8njuet
 

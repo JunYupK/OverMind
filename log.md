@@ -7,41 +7,48 @@
 
 ## 현재 상태
 
-- **마일스톤:** H 완료 → **M0 진행 중**
-- **최근 갱신:** 2026-09-02 · Claude Code
-- **브랜치:** `claude/overmind-handover-8njuet` (PR #4). PR #1·#2·#3 머지됨
+- **마일스톤:** **M0 — 설계 확정, 플랜 대기**
+- **최근 갱신:** 2026-09-02 · Claude Code (원격 세션)
+- **브랜치:** `claude/overmind-handover-8njuet` (PR #4 머지 후 `master`에서 다시 땄다)
 - **verify:** L1 20건 통과 / L2는 원격 컨테이너에 Docker가 없어 미실행 · **guardrails:** 7건 통과
 
 ### 진행 중
 
-- [ ] M0 구현 계획 작성 — **Codex가 자기 작업 공간에서 진행 중, 아직 미푸시**.
-      원격에는 반영되지 않았다. 이 세션은 그 작업에 손대지 않았다
+- **M0 설계 확정.** `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인).
+  observation 영속화 + 원격 `remember_memory`/`recall_memory` MCP 도구.
+  **canonicalization 없음.** recall은 USER + 선택한 PROJECT를 `observed_at` 최신순 keyset로 반환
+- 다음은 이 스펙으로 `superpowers:writing-plans`를 돌리는 것
 
 ### 다음 할 일
 
-1. Codex의 M0 플랜이 올라오면 검토 → 구현
-2. M0 첫 L2 태스크에서 `FixtureLlmPort.replaying()`을 실제로 소비할 것.
-   지금은 호출자가 없어 장치가 죽은 상태다
+1. M0 writing-plan 작성
+2. 플랜에서 반드시 묶을 것 — **`FixtureLlmPort` 호출자.** 지금은 호출자가 없어 죽은 코드다.
+   다만 M0 스펙 §9는 실 LLM L3가 없다고 못 박았으므로, 이 장치를 M0에서 살릴 수 있는지부터 본다.
+   살릴 수 없으면 M2로 미루고 그 사실을 여기 적는다
+3. 구현 순서는 플랜을 따른다. 설계를 다시 열지 않는다
+
+### 확정된 결정 — M0 설계가 닫은 것
+
+A-1 Async only / A-2 Replay 불변식 채택 / A-3 호출자 제공 idempotency key /
+A-4 실행된 단계의 버전만 기록. 전부 `docs/arch/decisions.md` 확정 표로 옮겼다.
 
 ### 열려 있는 결정
 
-- `docs/arch/decisions.md`의 "열려 있음" 표 참조.
-  **A-1(Fast path 제거 여부)과 A-2(replay 불변식)가 스키마를 가른다** —
-  나중에 바꾸면 마이그레이션이 아니라 재설계다
-- B-4 — L3 비용 상한을 강제하는 장치 (M5 이전). 지금은 산문으로만 존재한다
+- **B-1·B-2·B-3의 기한이 지났다.** 셋 다 "M0 브레인스토밍"이 기한이었는데 M0 설계는
+  이들을 닫지 않고 §11에서 범위 밖으로 미뤘다. 어느 마일스톤에 묶을지 다시 정해야 한다
+- **B-4 — L3 비용 상한을 강제하는 장치** (기한 M5 이전). 여전히 산문뿐이다
 
 ### 이월된 결함 — 닫히지 않았고 각각 이유가 있다
 
-전수 리뷰와 CI가 잡았지만 이번 라운드에서 닫지 않기로 한 것들이다.
-대화에만 남겨두면 세션과 함께 사라지므로 여기 둔다.
-
-- `@Nested` 내부 클래스의 `@SpringBootTest`는 계층 게이트를 여전히 우회한다.
-  google-java-format으로는 도달할 수 없는 형태라 우선순위를 낮췄다
+- `@Nested` 내부 클래스의 `@SpringBootTest`는 계층 게이트를 여전히 우회한다
+  (google-java-format으로는 도달할 수 없는 형태라 우선순위를 낮췄다)
 - `@Tag(상수)` 거짓 양성 — 안전한 방향으로 실패하므로 의도적으로 남겼다
 - 바닥 검사는 **발견된** 테스트를 세지 **실행된** 것을 세지 않는다
 - AR-3(LLM SDK 격리)은 대상 SDK가 아직 의존성에 없어 사실상 공허하다
+- **감시 경로 목록이 세 곳에 있는데 셋이 같은지 검사하는 것이 없다** — 가드 코드 /
+  `AGENTS.md` 절대 규칙 3 / `40-guardrails.md`. 주석만 "같아야 한다"고 말한다
 - `OVERMIND_LLM_API_KEY` 시크릿 미등록 — 실 L3 실행 전에 필요하다
-- 원격 브랜치 `feat/harness`, `feat/vendor-skills` 미삭제
+- 원격 브랜치 `feat/harness`, `feat/vendor-skills`, `feat/widen-log-guard` 미삭제
 
 ### 막힌 것
 
@@ -50,6 +57,23 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-02 · Claude Code (원격 세션) · M0 설계 스펙 확보 · claude/overmind-handover-8njuet
+
+- **한 일:** M0 설계를 `docs/superpowers/specs/`에 저장하고, 스펙 §2가 닫은 A-1~A-4를
+  `docs/arch/decisions.md` 확정 표로 옮겼다. 새 결정을 내린 게 아니라 승인된 스펙을
+  전사한 것이다. 옮기다 보니 B-1·B-2·B-3의 기한이 조용히 지나 있어 그 사실을 명시했다 —
+  셋 다 "M0 브레인스토밍"이 기한인데 M0 설계는 §11에서 범위 밖으로 미뤘다
+- **결과:** `guardrails` 7건 / L1 20건 통과. `verify`는 Docker가 없어 미완주
+- **함정:** **인터넷이 분리된 환경에서 진행한 설계 작업은 저장소에 도달하지 못한 채로
+  사라질 수 있다.** 이번에 Codex 쪽 M0 작업이 그렇게 유실됐고, 사용자가 대화로 다시
+  건네주지 않았으면 복구할 방법이 없었다. 도구가 무엇이든 **결론은 푸시할 수 있는 곳에서
+  다시 쓴다** — 이 저장소의 log.md·decisions.md 규약이 붙잡으려는 것이 정확히 이 손실이다.
+  둘째: 이 커밋이 넓힌 감시 경로에 실물로 걸린 첫 변경이다. `docs/superpowers/`와
+  `docs/arch/`만 고쳤고 `src/`는 한 줄도 안 건드렸는데 log.md 동반 갱신이 요구됐다 —
+  PR #3이 감시 경로를 넓힌 이유가 바로 이 형태의 세션이다
+- **다음:** 이 스펙으로 `superpowers:writing-plans` 실행
+
 
 ### 2026-09-02 · Claude Code (원격 세션) · log.md 가드의 경로 인용 구멍 + 이월 결함 등재 · claude/overmind-handover-8njuet
 

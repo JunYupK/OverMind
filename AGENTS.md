@@ -39,6 +39,11 @@ OverMind는 여러 AI 클라이언트(Claude Chat / ChatGPT / Claude Code / Code
 | 아키텍처 배경이 궁금함 | `docs/arch/baseline-v0.1.md`, `docs/arch/review-v0.1.md` |
 | 무엇이 이미 정해졌는지 확인 | `docs/arch/decisions.md` |
 | 이 기능이 왜 필요한지 확인 | `docs/requirements/R1-R6.md` |
+| 설계·계획·구현·리뷰의 **작업 절차**가 필요함 | `.claude/skills/README.md` → 해당 스킬의 `SKILL.md` |
+
+`.claude/skills/`는 superpowers 스킬을 저장소에 복사해 둔 것이다. 도구가 무엇이든
+읽을 수 있다. 스킬은 절차를 적은 지시문이지 능력이 아니므로, 자기 도구가 할 수 있는
+만큼 따르고 건너뛴 단계는 `log.md`에 적는다. 규약이 충돌하면 `docs/harness/`가 우선이다.
 
 ## 세션 종료 절차
 

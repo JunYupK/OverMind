@@ -7,41 +7,60 @@
 
 ## 현재 상태
 
-- **마일스톤:** H 완료 → **M0 진행 중**
-- **최근 갱신:** 2026-09-02 · Claude Code
-- **브랜치:** `claude/overmind-handover-8njuet` (PR #4). PR #1·#2·#3 머지됨
-- **verify:** L1 20건 통과 / L2는 원격 컨테이너에 Docker가 없어 미실행 · **guardrails:** 7건 통과
+- **마일스톤:** **M0 — 설계 확정, 플랜 대기**
+- **최근 갱신:** 2026-09-02 · Claude Code (원격 세션)
+- **브랜치:** `claude/overmind-handover-8njuet` (PR #4 머지 후 `master`에서 다시 땄다)
+- **verify:** L1 20건 통과 / L2는 원격 컨테이너에 Docker가 없어 미실행 · **guardrails:** 11건 통과
 
 ### 진행 중
 
-- [ ] M0 구현 계획 작성 — **Codex가 자기 작업 공간에서 진행 중, 아직 미푸시**.
-      원격에는 반영되지 않았다. 이 세션은 그 작업에 손대지 않았다
+- **M0 설계·플랜 확정. 구현 대기.**
+  - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
+  - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — 14개 태스크
 
 ### 다음 할 일
 
-1. Codex의 M0 플랜이 올라오면 검토 → 구현
-2. M0 첫 L2 태스크에서 `FixtureLlmPort.replaying()`을 실제로 소비할 것.
-   지금은 호출자가 없어 장치가 죽은 상태다
+1. 플랜 Task 1부터 실행한다. `superpowers:subagent-driven-development` 또는
+   `superpowers:executing-plans`를 쓴다
+2. **Task 10은 사용자 승인이 필요하다** — 의존성 추가(`CLAUDE.md` 권한 표)
+3. **Task 9는 게이트 완화다** — AR-3이 MCP SDK를 `adapter.out` 밖에서 금지하는데
+   MCP 서버는 진입 어댑터다. 규칙을 두 갈래로 나눈다. 리뷰에서 가장 주의 깊게 볼 지점
+4. 설계를 다시 열지 않는다. 스펙과 어긋나는 것이 나오면 스펙을 고치고 그 사실을 남긴다
+
+### 확정된 결정
+
+- **A-1~A-4** — M0 설계가 닫았다. Async only / Replay 불변식 / 호출자 제공 idempotency
+  key / 실행된 단계의 버전만 기록
+- **D-G — Spring Boot 4.1.1로 올린다** (사용자 승인). D-B의 Boot 3 부분을 대체한다.
+  Java 21 유지(Boot 4 기준선은 Java 17). Spring AI 2.0.1 + MCP SDK 2.0.1
+전부 `docs/arch/decisions.md`에 있다.
 
 ### 열려 있는 결정
 
-- `docs/arch/decisions.md`의 "열려 있음" 표 참조.
-  **A-1(Fast path 제거 여부)과 A-2(replay 불변식)가 스키마를 가른다** —
-  나중에 바꾸면 마이그레이션이 아니라 재설계다
-- B-4 — L3 비용 상한을 강제하는 장치 (M5 이전). 지금은 산문으로만 존재한다
+- **B-1·B-2·B-3 — 기한이 M0로 확정됐다** (사용자 결정). 구현은 M2 이후지만 **결정은
+  M0가 끝나기 전에** 한다. M0를 매일 써 본 경험이 있어야 slot registry 범위·snapshot
+  시점·bootstrap 수치를 근거를 갖고 정할 수 있다
+- **B-4 — L3 비용 상한을 강제하는 장치** (기한 M5 이전). 여전히 산문뿐이다
+
 
 ### 이월된 결함 — 닫히지 않았고 각각 이유가 있다
 
-전수 리뷰와 CI가 잡았지만 이번 라운드에서 닫지 않기로 한 것들이다.
-대화에만 남겨두면 세션과 함께 사라지므로 여기 둔다.
-
-- `@Nested` 내부 클래스의 `@SpringBootTest`는 계층 게이트를 여전히 우회한다.
-  google-java-format으로는 도달할 수 없는 형태라 우선순위를 낮췄다
+- `@Nested` 내부 클래스의 `@SpringBootTest`는 계층 게이트를 여전히 우회한다
+  (google-java-format으로는 도달할 수 없는 형태라 우선순위를 낮췄다)
 - `@Tag(상수)` 거짓 양성 — 안전한 방향으로 실패하므로 의도적으로 남겼다
 - 바닥 검사는 **발견된** 테스트를 세지 **실행된** 것을 세지 않는다
-- AR-3(LLM SDK 격리)은 대상 SDK가 아직 의존성에 없어 사실상 공허하다
+- AR-3(LLM SDK 격리)은 대상 SDK가 아직 의존성에 없어 사실상 공허하다.
+  플랜 Task 10이 MCP SDK를 들이면 절반은 실물이 된다
+- **`FixtureLlmPort`는 M0에서 살아나지 않는다 — M2로 미룬다.** 인수인계에는 "M0 첫 L2
+  태스크의 acceptance criterion으로 묶어야 죽지 않는다"고 되어 있었으나, 스펙 §9는 M0에
+  실 LLM L3가 없다고 못 박았고 §11은 LLM extraction을 범위 밖으로 뒀다. **M0에는 LLM을
+  부를 곳이 아예 없어 묶을 자리가 없다.** 억지로 묶으면 스펙과 충돌한다
 - `OVERMIND_LLM_API_KEY` 시크릿 미등록 — 실 L3 실행 전에 필요하다
-- 원격 브랜치 `feat/harness`, `feat/vendor-skills` 미삭제
+- **원격 브랜치 3종 미삭제 — 이 환경에서 지울 수 없다.** `feat/harness`,
+  `feat/vendor-skills`, `feat/widen-log-guard` 전부 `--cherry-pick`으로 master에 대응
+  커밋이 있어 삭제해도 잃는 것이 없다. 그런데 `git push --delete`가 **403**이고
+  GitHub MCP에는 브랜치 삭제 도구가 없다. 로컬에서
+  `git push origin --delete <브랜치>`로 지워야 한다
 
 ### 막힌 것
 
@@ -50,6 +69,138 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-02 · Claude Code (원격 세션) · Codex 리뷰 5건 반영 · claude/overmind-handover-8njuet
+
+- **한 일:** PR #5의 플랜 초안에 Codex가 P1 4건·P2 1건을 냈고 **전부 사실이었다.**
+  하나씩 확인한 뒤 반영했다.
+  - **체크섬 경로** — Task 3이 없는 경로를 적고 `git add`에서도 빠뜨렸다. 실제는
+    `docs/harness/migration-checksums.txt`(`build.gradle.kts:191`). 새 클론 CI가
+    `guardrails`에서 죽었을 것이다
+  - **MockMvc `jwt()`** — post-processor가 이미 인증된 토큰을 SecurityContext에 꽂아
+    `JwtDecoder`와 validator 사슬을 통째로 건너뛴다. issuer·audience·만료·subject 검증이
+    **전부 빠져도 초록이다.** 서명 픽스처를 실제 디코더에 통과시키는 방식으로 바꾸고,
+    운영과 같은 validator 사슬을 공유하게 했다
+  - **트랜잭션 경계** — `handle`이 port를 순서대로 부르기만 해서 subject가 커밋된 뒤
+    insert가 실패하면 빈 PROJECT가 남는다. 스펙 §5.1이 명시적으로 금지한 상태다.
+    port 목록에 `adapter-neutral transaction boundary`를 적어 놓고 정작 쓰지 않았다
+  - **로그 위생** — 다섯 번째 흐름이 인가 실패여야 하는데 "없는 PROJECT" 오류를 넣었다.
+    `webEnvironment = NONE`이라 Security 경로를 아예 지나가지 않는다
+  - **예산 테스트** — `limit` 100 × 16 KiB = 1,638,400 < 2 MiB. **예산에 닿을 수가 없다.**
+    예산 코드를 통째로 지워도 통과하는 검사였다
+- **결과:** 플랜 3641줄 → 4034줄. `guardrails` 11건 / L1 20건 통과, gitleaks 깨끗
+- **함정:** **다섯 건 중 셋이 "통과하지만 아무것도 검사하지 않는" 유형이었다.** 이 저장소가
+  하네스 단계에서 반복해 잡아낸 바로 그 부류를, 그 이력을 다 읽고 쓴 플랜이 다시 만들었다.
+  스스로 게이트를 의심하는 절차를 코드에는 붙였으면서 **테스트 자체가 무엇을 우회하는지는
+  검증하지 않았다.** MockMvc `jwt()`가 대표적이다 — API 이름만 보면 인증을 테스트하는
+  것처럼 보이는데 실제로는 인증을 건너뛴다.
+  둘째: **스펙 §5.4의 2 MiB 예산은 §5.2(limit ≤ 100)와 §4.2(content ≤ 16 KiB) 아래에서
+  도달 불가다.** 승인된 스펙 안의 수치 불일치이고, 세 수치 중 하나를 바꿀지는 결정 사항이다.
+  플랜은 스펙을 그대로 따르되 예산을 주입 가능하게 만들어 로직만 검증하고, **도달 불가라는
+  사실 자체를 못 박는 검사**를 넣었다 — 나중에 수치가 바뀌면 그 검사가 실패하며 알려 준다.
+  셋째: **리뷰는 도구를 나눈 값을 했다.** `docs/harness/50-review-protocol.md`가 자기가
+  구현한 것을 자기가 리뷰하지 말라고 한 이유가 이번에 실물로 나왔다
+- **다음:** 사용자에게 §5.4 수치 불일치를 보고. 로컬에서 Task 0부터
+
+
+### 2026-09-02 · Claude Code (원격 세션) · 감시 경로 세 목록 동기화 검사 · claude/overmind-handover-8njuet
+
+- **한 일:** 감시 경로 목록이 세 곳(가드 코드 / `AGENTS.md` 절대 규칙 3 /
+  `40-guardrails.md` 표)에 중복돼 있는데 주석만 "같아야 한다"고 말하던 것을 게이트로 바꿨다.
+  **가드 코드가 진실의 원천이고 문서 둘은 사본이다**(사용자 결정). 문서에 `watched-paths`
+  마커 블록을 두고 `WatchedPathSyncGuardTest`가 그 안의 백틱 토큰을 모아 코드 상수와
+  집합 비교한다. glob 별표만 떼는 정규화를 쓰고, 그 정규화 규칙 자체도 테스트로 못 박았다
+- **결과:** guardrail 7건 → 11건. L1 20건 통과. 썩힘 실험 3종이 각각 정확히 해당 검사만
+  깨뜨렸다 — 코드에만 경로 추가(문서 둘 다 실패) / `AGENTS.md` 사본에서만 항목 제거
+  (그 문서만 실패) / 마커 제거(그 문서만 실패). 복원 후 초록
+- **함정:** **검사를 넣자마자 그 검사가 나를 잡았다.** `40-guardrails.md`에 마커를 넣는
+  치환이 공백 불일치로 조용히 적용되지 않았는데, 새 테스트가 "마커가 없습니다"로 실패했다.
+  검사가 없었으면 문서에 마커가 없는 채로 커밋됐을 것이고, 그러면 이후 어느 세션도
+  그 사본이 코드와 갈라진 것을 모른다.
+  둘째: **파싱 검사는 "빈 집합 == 빈 집합"으로 통과할 수 있다.** 마커를 지우거나 블록을
+  비우면 양쪽이 비어 조용히 통과한다. 그래서 마커 부재를 명시적 실패로 처리하고,
+  원천 목록이 5개 미만이면 실패하는 바닥을 따로 뒀다. 이 저장소가 반복해서 당한
+  "통과하지만 아무것도 검사하지 않는" 형태를 검사 자체가 재현하지 않게 하는 장치다
+- **다음:** 로컬에서 플랜 Task 0(Boot 4 상승)부터
+
+
+### 2026-09-02 · Claude Code (원격 세션) · Boot 4 상승 결정과 플랜 개정 · claude/overmind-handover-8njuet
+
+- **한 일:** 사용자 승인에 따라 세 가지를 반영했다.
+  - **D-G — Spring Boot 4.1.1.** D-B의 Boot 3 부분을 대체한다. 플랜의 플랫폼 상승을
+    **Task 10에서 Task 0으로 앞당겼다** — Task 1~8을 Boot 3.5에서 짜고 테스트한 뒤
+    Hibernate 6→7, jakarta.persistence 3.1→3.2가 발밑에서 바뀌면 전부 다시 돌려야 한다.
+    제품 코드가 한 줄도 없는 지금이 상승 비용이 가장 싸다
+  - **B-1·B-2·B-3 기한을 M0로.** 구현이 M0 밖인 것과 결정이 M0 안인 것은 모순되지 않는다
+  - 원격 브랜치 3종 삭제 시도 — **403으로 실패했다.** 아래 함정 참조
+- **결과:** `guardrails` 7건 / L1 20건 통과, gitleaks `no leaks found`
+- **함정:** **Spring AI 2.0에서 MCP 패키지가 옮겨졌다.** 1.1.x의
+  `io.modelcontextprotocol.server.transport..`가 2.0에서는
+  `org.springframework.ai.mcp.server.webmvc.transport..`이고, 자동설정도
+  `...mcp.server.autoconfigure..` → `...mcp.server.webmvc.autoconfigure..`다.
+  **1.1.x 기준 예제를 그대로 옮기면 컴파일되지 않는다.** jar를 열어 확인했다.
+  둘째, **그래도 AR-3 충돌은 사라지지 않는다.** `mcp-spring-webmvc:2.0.1`이 여전히
+  `io.modelcontextprotocol.sdk:mcp-core`에 의존한다 — 프로토콜 타입은 그 패키지에 남는다.
+  Boot 4로 올리면 Task 9가 필요 없어질까 기대했지만 아니었다.
+  셋째, **gitleaks-action은 워킹트리가 아니라 커밋 범위를 스캔한다.** 앞 세션 기록에
+  적은 시크릿 건은 파일만 고쳐서는 지워지지 않았고, CI가 두 번째로 빨개졌다. 그 문자열이
+  **어떤 커밋에도 없도록** 브랜치 히스토리를 정리해야 했다. `--no-git` 스캔이 초록이라고
+  안심한 것이 오진이었다 — 게이트가 무엇을 스캔하는지 먼저 읽었어야 했다.
+  넷째, **이 환경은 원격 브랜치를 지울 수 없다.** `git push --delete`가 403이고
+  (프록시 로그에는 github.com 거부 기록이 없으므로 자격증명 범위 문제로 보인다),
+  GitHub MCP에도 브랜치 삭제 도구가 없다. push는 되는데 delete는 안 된다
+- **다음:** 감시 경로 세 목록 동기화 검사의 형태를 정한다. 그 뒤 로컬에서 Task 0부터
+
+
+### 2026-09-02 · Claude Code (원격 세션) · M0 구현 플랜 작성 · claude/overmind-handover-8njuet
+
+- **한 일:** `superpowers:writing-plans`로 M0 구현 플랜을 썼다. 14개 태스크, 각 태스크가
+  독립적으로 테스트 가능한 산출물로 끝난다. 쓰기 전에 실제 트리와 Maven Central을 확인해
+  **플랜이 존재하지 않는 것을 가리키지 않게** 했다
+- **결과:** `docs/superpowers/plans/2026-09-02-overmind-m0.md`. `guardrails` 7건 / L1 20건 통과
+- **함정:** 확인하지 않았으면 플랜이 통째로 틀렸을 사실 세 가지가 나왔다.
+  1. **AR-3과 MCP 서버가 충돌한다.** 규칙이 `io.modelcontextprotocol..`을 `adapter.out`
+     밖에서 금지하는데 MCP 서버는 **진입** 어댑터다. 스펙 §3대로 짜면 게이트가 실패한다.
+     규칙을 지우는 대신 LLM SDK와 MCP SDK로 나누고, "코어는 여전히 모른다"를 별도 규칙으로
+     못 박는 것으로 플랜에 넣었다(Task 9)
+  2. **Spring AI 2.x는 쓸 수 없다.** `spring-ai-starter-mcp-server-webmvc:2.0.1`의 POM이
+     `spring-boot-starter-web:4.1.1`을 참조한다 — Boot 4를 요구한다. Boot 3.5에 물리는
+     마지막 라인은 **1.1.8**(Boot 3.5.15)이다. 최신 버전을 집었으면 Task 10에서 막혔다
+  3. **도메인에 `record`를 쓸 수 없다.** INV-02가 `domain..`의 `toString`을 금지하는데
+     record는 `toString`을 바이트코드로 생성한다. 스펙 §8이 "record 대신 안전한 immutable
+     class를 고려한다"고 한 것이 이미 게이트로 강제되고 있었다 — 고려가 아니라 제약이다.
+  **교훈: 플랜은 스펙만 보고 쓸 수 없다.** 스펙이 옳아도 그것을 받는 트리의 게이트와
+  충돌하면 구현 단계에서 멈춘다. 충돌은 스펙에도 트리에도 안 적혀 있고 둘을 겹쳐 볼 때만 보인다.
+  넷째: MCP 도구 등록 API와 프로토콜 설정 키는 **확정하지 못했다.** 클래스 이름을 지어내는
+  대신 해석된 jar를 직접 열어 보는 명령을 플랜의 첫 스텝으로 넣었다. 모르는 것을 아는 척한
+  플랜은 실행자를 더 크게 넘어뜨린다
+  다섯째: **플랜 문서 자체가 시크릿 게이트를 밟았다.** 예시로 적은
+  `overmind.security.cursor-secret=<32자 hex>` 두 줄이 gitleaks의 `generic-api-key`에
+  엔트로피 4.0으로 걸려 CI `guardrails`가 빨개졌다(PR #5, `bab1035`). 로컬에서는
+  gitleaks가 없어 조용히 건너뛰므로 초록이었다 — **로컬 초록이 CI 초록이 아니라는 것을
+  또 확인했다.** `.gitleaks.toml` 예외로 무마하지 않고, 낱말 반복으로 길이를 채우도록
+  테스트 코드를 고쳤다. 잡은 것이 진짜 시크릿이 아니어도 잡은 규칙은 옳다.
+  검증은 gitleaks 바이너리를 받아 직접 돌려서 했다 — 푸시된 커밋에서 `leaks found: 2`,
+  고친 트리에서 `no leaks found`
+- **다음:** 플랜 Task 1 실행. Task 10 전에 의존성 승인을 받는다
+
+
+### 2026-09-02 · Claude Code (원격 세션) · M0 설계 스펙 확보 · claude/overmind-handover-8njuet
+
+- **한 일:** M0 설계를 `docs/superpowers/specs/`에 저장하고, 스펙 §2가 닫은 A-1~A-4를
+  `docs/arch/decisions.md` 확정 표로 옮겼다. 새 결정을 내린 게 아니라 승인된 스펙을
+  전사한 것이다. 옮기다 보니 B-1·B-2·B-3의 기한이 조용히 지나 있어 그 사실을 명시했다 —
+  셋 다 "M0 브레인스토밍"이 기한인데 M0 설계는 §11에서 범위 밖으로 미뤘다
+- **결과:** `guardrails` 7건 / L1 20건 통과. `verify`는 Docker가 없어 미완주
+- **함정:** **인터넷이 분리된 환경에서 진행한 설계 작업은 저장소에 도달하지 못한 채로
+  사라질 수 있다.** 이번에 Codex 쪽 M0 작업이 그렇게 유실됐고, 사용자가 대화로 다시
+  건네주지 않았으면 복구할 방법이 없었다. 도구가 무엇이든 **결론은 푸시할 수 있는 곳에서
+  다시 쓴다** — 이 저장소의 log.md·decisions.md 규약이 붙잡으려는 것이 정확히 이 손실이다.
+  둘째: 이 커밋이 넓힌 감시 경로에 실물로 걸린 첫 변경이다. `docs/superpowers/`와
+  `docs/arch/`만 고쳤고 `src/`는 한 줄도 안 건드렸는데 log.md 동반 갱신이 요구됐다 —
+  PR #3이 감시 경로를 넓힌 이유가 바로 이 형태의 세션이다
+- **다음:** 이 스펙으로 `superpowers:writing-plans` 실행
+
 
 ### 2026-09-02 · Claude Code (원격 세션) · log.md 가드의 경로 인용 구멍 + 이월 결함 등재 · claude/overmind-handover-8njuet
 

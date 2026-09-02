@@ -36,6 +36,13 @@
 
 ## 세션 기록
 
+### 2026-09-02 12:55 · Claude Code · CI 수정
+
+- **한 일:** `gradlew`에 실행 비트 부여 (`git update-index --chmod=+x`)
+- **결과:** PR #1의 verify/guardrails 두 잡이 `./gradlew: Permission denied` (exit 126)로 실패하던 것을 수정
+- **함정:** Windows에서 커밋한 `gradlew`는 모드가 100644로 들어간다. 로컬에서는 Git Bash가 실행해 주므로 절대 드러나지 않고, Linux 러너에서만 터진다. 이 저장소의 모든 게이트가 `./gradlew`로 시작하므로 CI가 통째로 무력화된다
+- **다음:** CI 재실행 확인 후 master 브랜치 보호 설정
+
 ### 2026-09-02 · Claude Code · 하네스 전수 리뷰 지적 반영 · (커밋 SHA는 아래 참조)
 
 - **한 일:** 브랜치 전수 리뷰가 낸 9건(C-1, C-2, I-1~I-7)을 한 번에 고쳤다.

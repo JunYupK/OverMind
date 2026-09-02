@@ -7,16 +7,19 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — 설계 확정, 플랜 대기**
-- **최근 갱신:** 2026-09-02 · Claude Code (원격 세션)
-- **브랜치:** `claude/overmind-handover-8njuet` (PR #4 머지 후 `master`에서 다시 땄다)
-- **verify:** L1 20건 통과 / L2는 원격 컨테이너에 Docker가 없어 미실행 · **guardrails:** 11건 통과
+- **마일스톤:** **M0 — Task 0 완료(Spring Boot 4.1.1 상승), Task 1부터 대기**
+- **최근 갱신:** 2026-09-02 · Claude Code (로컬 세션)
+- **브랜치:** `feat/m0`
+- **verify:** L1 20건 / L2(integrationTest) 1건 통과(로컬 Docker) · **guardrails:** 11건 통과
 
 ### 진행 중
 
-- **M0 설계·플랜 확정. 구현 대기.**
+- **M0 설계·플랜 확정, Task 0(플랫폼 상승) 완료.**
   - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
   - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — 14개 태스크
+  - `build.gradle.kts`가 Spring Boot 4.1.1 / Hibernate 7.4.5.Final / jakarta.persistence
+    3.2.0 / Flyway 12.4.0 / Spring Framework 7.0.9 위에서 돈다. 자세한 내용은
+    `.superpowers/sdd/2026-09-02-overmind-m0/task-0-report.md`
 
 ### 다음 할 일
 
@@ -69,6 +72,53 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-02 · Claude Code · Task 0 — Spring Boot 4.1.1 상승 · (커밋 SHA는 아래 참조)
+
+- **한 일:** 플랜 Task 0 브리프대로 상승 전 상태를 먼저 기록한 뒤(초록: L1 20 / L2 1 /
+  guardrail 11) `build.gradle.kts`의 `org.springframework.boot` 플러그인을 3.5.0 →
+  4.1.1로 올리고 `clean verify guardrails`로 무엇이 깨지는지 관찰했다. 두 가지가 깨졌다.
+  - **Jackson 2 → Jackson 3.** Boot 4의 `spring-boot-starter-web`이 이제
+    `tools.jackson.core:jackson-databind`(Jackson 3)를 기본으로 끌어오고
+    `com.fasterxml.jackson.databind`(Jackson 2)는 더 이상 전이 의존성에 없다.
+    테스트 지원 코드 `FixtureLlmPort`(L2 픽스처 재생용, record 두 개만 직렬화)가
+    Jackson 2 API를 임포트해 컴파일이 깨졌다. 별도 Jackson 2 의존성을 추가하는 대신
+    `import com.fasterxml.jackson.databind.ObjectMapper` →
+    `import tools.jackson.databind.ObjectMapper` 한 줄만 바꿨다 — 이미 클래스패스에
+    있는 Boot 4 기본 Jackson 3 API로 옮긴 것이고 나머지 코드는 그대로 컴파일된다.
+  - **Flyway 자동설정이 별도 아티팩트로 분리됐다.** Boot 4에서
+    `org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration`이
+    `spring-boot-autoconfigure`가 아니라 신설된 `org.springframework.boot:spring-boot-flyway`
+    (그리고 스타터 `spring-boot-starter-flyway`)로 옮겨갔다. `flyway-core`를 직접
+    `implementation`으로 물던 기존 방식은 컴파일도 되고 `flyway-database-postgresql`도
+    그대로 통과했지만, **자동설정 클래스 자체가 클래스패스에 없어 Flyway 빈이 하나도
+    안 뜨고 마이그레이션이 조용히 스킵됐다.** `FlywayMigrationTest`가
+    `pg_extension`에서 `vector` 0건으로 실패해서 드러났다 — 컴파일 에러가 아니라
+    런타임 조용한 실패였다. `ApplicationContext.getBeanDefinitionNames()`로 flyway
+    관련 빈이 전무함을 직접 확인한 뒤(임시 디버그 코드, 확인 후 원본과 바이트 단위로
+    동일하게 복원 — `git diff`로 무변경 확인), `implementation("org.flywaydb:flyway-core")`를
+    `implementation("org.springframework.boot:spring-boot-starter-flyway")`로 교체했다.
+    `runtimeOnly("org.flywaydb:flyway-database-postgresql")`은 그대로 둔다 — 스타터가
+    DB별 모듈까지 끌어오지 않는다. 교체 후 `flywayInitializer`·`flyway` 빈이 뜨고
+    마이그레이션이 실행되는 로그(`Creating Schema History table...`)를 직접 봤다.
+  - `ddl-auto: validate`, ArchUnit, Testcontainers BOM(1.20.4 고정)은 브리프 예측대로
+    영향 없었다 — 엔티티가 아직 없고 컨테이너도 그대로 떴다.
+- **결과:** `./gradlew clean verify guardrails` BUILD SUCCESSFUL. 바닥 개수가 상승 전과
+  **정확히 동일**하다 — `test` 20건, `integrationTest` 1건, `guardrailTest` 11건(브리프의
+  "7건"은 오래된 숫자이고, 실제 상승 전 베이스라인도 11건이었다 — 개수 대조는 브리프 상수가
+  아니라 Step 1에서 직접 관찰한 베이스라인과 했다). 해상된 버전: Spring Boot 4.1.1 /
+  Spring Framework 7.0.9 / Hibernate 7.4.5.Final / jakarta.persistence 3.2.0 /
+  Flyway 12.4.0 — 브리프 표와 일치. `guardrails`는 gitleaks 미설치 경고만 내고 통과.
+- **함정:** **컴파일 에러(Jackson)와 조용한 런타임 스킵(Flyway)은 다르게 다뤄야 한다.**
+  전자는 빌드가 바로 잡아 주지만, 후자는 `verify`가 "빌드는 성공, 테스트 1건 중 1건
+  실패"로만 보여줘서 원인이 Flyway 자동설정 분리라는 것을 스택 트레이스가 알려주지
+  않았다. 로그에 Flyway 관련 줄이 **한 줄도 없다**는 부재 자체가 단서였다 — Hikari
+  풀 다음에 바로 Hibernate가 뜨는 순서가 상승 전과 달랐다. 빈 목록을 직접 찍어보고서야
+  자동설정 클래스 자체가 없다는 것을 확인했다. **의존성이 컴파일되고 러타임 스킵도 없이
+  통과하는 형태의 "깨짐"은 이 저장소의 0건 실행 바닥이 못 잡는다** — 바닥은 테스트
+  0건 실행만 잡지, 테스트가 도는데 자동설정 빈이 안 뜨는 것은 못 잡는다. 이번에는
+  `FlywayMigrationTest` 자체가 그 바닥 역할을 대신했다.
+- **다음:** 플랜 Task 1부터 실행
 
 ### 2026-09-02 · Claude Code (원격 세션) · Codex 리뷰 5건 반영 · claude/overmind-handover-8njuet
 

@@ -7,7 +7,22 @@
 | 문서 | `CLAUDE.md` 40줄, `AGENTS.md` 120줄 상한 |
 | 스키마 | `spring.jpa.hibernate.ddl-auto: validate` 고정 |
 | 마이그레이션 | 이미 커밋된 `V*__*.sql`은 수정 불가 (해시 비교) |
-| 로그 | `src/**`, `build.gradle.kts`, `.github/**`, `docs/harness/**` 변경 시 `log.md` 동반 변경 |
+| 로그 | 아래 감시 경로 변경 시 `log.md` 동반 변경 (같은 PR 범위 안) |
+
+### log.md 감시 경로
+
+| 부류 | 경로 |
+|---|---|
+| 제품 코드 | `src/**` |
+| 게이트 기계 | `build.gradle.kts`, `.github/**`, `docs/harness/**` |
+| 설계와 결정 | `docs/superpowers/**`, `docs/arch/**`, `docs/requirements/**`, `AGENTS.md`, `CLAUDE.md` |
+
+설계 문서를 넣은 이유는, 스펙이나 플랜만 쓰는 세션은 코드를 한 줄도 건드리지 않을 수
+있기 때문이다. 그러면 설계 세션 하나가 통째로 로그에 흔적을 남기지 않고 지나간다.
+
+이 목록은 `AGENTS.md` 절대 규칙 3, 그리고 `LogUpdatedGuardTest`의 `WATCHED_PREFIXES` /
+`WATCHED_FILES`와 **같아야 한다.** 셋 중 하나만 고치면 문서가 말하는 규칙과 강제되는
+규칙이 갈라진다.
 | 빈 게이트 | `test`/`integrationTest`/`guardrailTest`가 0건 실행하면 실패 |
 | 시크릿 | gitleaks 스캔 |
 

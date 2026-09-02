@@ -1,4 +1,4 @@
 # Flyway 마이그레이션 해시. forward-only 강제용.
 # 새 파일을 추가했을 때만 ./gradlew updateMigrationChecksums 로 갱신한다.
-# 기존 파일을 고치고 갱신하는 것은 가드레일 우회다.
+# 이 태스크는 append-only다 — 이미 기록된 파일이 바뀌면 갱신하지 않고 실패한다.
 V1__enable_pgvector.sql 204d0647ea905b8df89b580e67abdc4c4f9a347ffbc496dbf8f925b8dd27cf00

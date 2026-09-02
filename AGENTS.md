@@ -18,8 +18,10 @@ OverMind는 여러 AI 클라이언트(Claude Chat / ChatGPT / Claude Code / Code
 1. `docs/arch/baseline-v0.1.md`와 `docs/arch/review-v0.1.md`는 **읽기 전용 사료**다.
    결정이 바뀌면 `docs/arch/decisions.md`에 기록하고 사료는 건드리지 않는다.
 2. `log.md`의 과거 세션 기록 항목은 편집하지 않는다. 정정은 새 항목에 쓴다.
-3. `src/` 아래를 고쳤으면 같은 커밋에 `log.md`를 갱신한다. CI가 강제한다.
-4. 커밋 전에 `./gradlew verify`가 통과해야 한다.
+3. `src/`, `build.gradle.kts`, `.github/`, `docs/harness/`를 고쳤으면
+   **같은 PR(브랜치 범위) 안에서** `log.md`를 갱신한다. CI가 강제한다.
+4. 커밋 전에 `./gradlew verify`와 `./gradlew guardrails`가 **둘 다** 통과해야 한다.
+   CI는 두 잡을 따로 돌린다. `verify`만 보면 CI에서 빨간불을 만난다.
 5. 다음은 금지다 — `master`에 `git push --force`, `git reset --hard`,
    마이그레이션 밖의 `DROP`/`TRUNCATE`, 프로덕션 DB 직접 접속.
 
@@ -31,7 +33,7 @@ OverMind는 여러 AI 클라이언트(Claude Chat / ChatGPT / Claude Code / Code
 | 파일이 어디 있는지 모름 | `docs/harness/10-repo-map.md` |
 | 빌드·테스트를 돌리려 함 | `docs/harness/20-build-and-test.md` |
 | 태스크를 구현하려 함 | `docs/harness/30-loop.md` |
-| 커밋·푸시·마이그레이션·시크릿 | `docs/harness/40-guardrails.md` |
+| 커밋·푸시·마이그레이션·시크릿 | `docs/harness/40-guardrails.md` (커맨드는 `./gradlew guardrails`) |
 | 남의 코드를 리뷰하려 함 | `docs/harness/50-review-protocol.md` |
 | 이 변경이 무엇을 깨면 안 되는지 확인 | `docs/harness/60-invariants.md` |
 | 아키텍처 배경이 궁금함 | `docs/arch/baseline-v0.1.md`, `docs/arch/review-v0.1.md` |

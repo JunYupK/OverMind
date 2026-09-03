@@ -7,16 +7,17 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — Task 2~4 구현·검증 완료**
-- **최근 갱신:** 2026-09-03 · Codex (Task 4 완료)
+- **마일스톤:** **M0 — Task 2~5 구현·검증 완료**
+- **최근 갱신:** 2026-09-03 · Codex (Task 5 완료)
 - **브랜치:** `codex/m0-t2-t3` (`origin/master`의 `ecc4fb6`에서 시작)
-- **verify:** L1 51건 / L2 26건 통과(로컬 Docker) · **guardrails:** 11건 통과. gitleaks 미설치로 로컬 시크릿 스캔 생략
+- **verify:** L1 71건 / L2 33건 통과(로컬 Docker) · **guardrails:** 11건 통과. gitleaks 미설치로 로컬 시크릿 스캔 생략
 
 ### 진행 중
 
-- **Task 4 구현·검증 완료. 같은 PR #7에 커밋·푸시하도록 사용자 승인됨.**
-  T2는 `83416e7`, T3는 `f34a583`, T4는 이번 커밋이다. PR 병합은 별도 결정이다.
-- **M0 설계·플랜 확정, Task 0~1 병합 완료, Task 2~4 구현·검증 완료.**
+- **Task 5 구현·검증 완료. 같은 PR #7에 커밋·푸시하도록 사용자 승인됨.**
+  T2는 `83416e7`, T3는 `f34a583`, T4는 `e348cec`로 커밋·푸시됐다.
+  PR #7은 열려 있으며 병합은 별도 결정이다.
+- **M0 설계·플랜 확정, Task 0~1 병합 완료, Task 2~5 구현·검증 완료.**
   - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
   - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — Task 0~14
   - `build.gradle.kts`가 Spring Boot 4.1.1 / Hibernate 7.4.5.Final / jakarta.persistence
@@ -25,10 +26,10 @@
 
 ### 다음 할 일
 
-1. 같은 PR #7의 T2~T4 변경을 확인하고, 다음 인계에서 Task 5 `RememberMemory`를 진행한다.
-   T4는 동시 insert-or-find와 트랜잭션 경계까지이며 의미 필드 conflict 판정은 T5다.
-   PostgreSQL은 시각을 microsecond 정밀도로 저장하므로 T5의 정확 비교에서
-   sub-microsecond 입력 처리 정책을 확인한다. 현재 왕복 테스트는 microsecond 값이다.
+1. 같은 PR #7의 T2~T5 변경과 CI를 확인한다. 다음 구현은 사용자 인계에 따른
+   Task 6(HMAC cursor)다. Task 5의 멱등 응답·의미 필드 conflict·원자적 저장은 완료했다.
+   정확한 재시도를 위해 microsecond로 표현 불가능한 `observed_at`은
+   DB 접근 전에 `INVALID_ARGUMENT`로 거부하도록 스펙·플랜에 명시했다.
    RecallCursor는 자료형만 있고 T6에서 동작을 추가한다. 실제 `findPage`는 T8,
    `findUser()`는 T7이며 T11은 기존 MemoryConfig의 Clock 빈을 재사용한다.
 2. **Task 10은 사용자 승인이 필요하다** — 의존성 추가(`CLAUDE.md` 권한 표)
@@ -81,6 +82,24 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-03 10:20 · Codex · M0 Task 5 · 본 커밋(git log 참조)
+- **한 일:** RememberMemory를 구현했다. 입력 검증 뒤 트랜잭션 하나에서 기존 조회,
+  subject 생성, insert-or-find와 결과 판정을 수행한다. 기존 행과 경쟁 승자 모두
+  같은 의미 필드 비교를 적용한다. 요청 record의 문자열 표현은 원문을 숨긴다.
+- **결과:** 미구현 클래스의 컴파일 RED 이후 T5 L1 20건과 실제 DB L2 7건이 통과했다.
+  최종 `verify`(L1 71건/L2 33건)와 `guardrails`(11건)가 통과했고 실패·오류·스킵은
+  0건이다. PROJECT key 비교를 제거한 L1과 트랜잭션 경계를 제거한 L2가 각각
+  실패함을 확인하고 복원 후 전체 검증했다. 자체 스펙·diff 대조 실시, 사용자 결정에
+  따라 교차 리뷰는 미실시. 로컬 gitleaks는 생략됐고 CI에서 검사한다.
+- **함정:** PostgreSQL은 sub-microsecond 입력을 정확히 보존하지 않는다. 같은 요청의
+  재시도가 잘못 conflict가 되지 않도록 microsecond로 표현 불가능한 observed_at은
+  트랜잭션 시작 전에 INVALID_ARGUMENT로 거부한다. 반올림·절삭·마이그레이션 없이
+  스펙·플랜·결정 레지스터에 입력 제한을 명시했다. 더 정밀한 입력이 필요하면 별도
+  저장 설계가 필요하다. L2는 두 최초 조회를 barrier로 동기화해 실제 insert 경쟁을
+  보장하고, 다른 PROJECT를 만든 패자의 롤백도 확인했다. 전용 스키마를 사용한다.
+- **다음:** 같은 PR #7에 커밋·푸시하고 제목·설명을 T2~T5로 갱신한다. 다음 태스크는
+  T6이다. fake findUser/findPage는 T7, 실제 keyset 조회는 T8, MCP 연결은 T11이다.
 
 ### 2026-09-03 09:43 · Codex · M0 Task 4 · 본 커밋(git log 참조)
 - **한 일:** 영속화 포트와 PostgreSQL insert-or-find 어댑터, 여러 포트 호출을

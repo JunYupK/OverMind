@@ -20,6 +20,15 @@
 | A-4 | **실행된 단계의 버전만 기록한다.** M0는 `ingestion_type`(DIRECT_MCP)과 `input_schema_version`(1)만. 아직 없는 extractor·classifier·embedding 컬럼은 만들지 않는다 | M0 설계 §2.4 | 2026-09-02 |
 | D-G | **Spring Boot 4.1.1로 올린다** (D-B의 Boot 3 부분을 대체). Java 21 유지 — Boot 4 기준선은 Java 17이다. Spring AI 2.0.1 + MCP SDK 2.0.1을 쓴다 | 사용자 승인 2026-09-02 | 2026-09-02 |
 
+### T5 관측 시각 정밀도 보완 — 2026-09-03
+
+M0 `remember_memory`는 microsecond 단위로 정확히 표현할 수 있는 `observed_at`만
+받는다. 더 작은 유효 소수 부분은 `INVALID_ARGUMENT`로 거부한다. PostgreSQL
+`timestamptz`에 반올림되어 저장된 값과 원래 입력을 비교하면 같은 재시도도 conflict가
+되므로, 정확 비교 계약을 유지하면서 입력 경계를 명시했다. 반올림·절삭이나 V2 변경은
+하지 않는다. 이 제한은 Codex가 T5 구현 중 정한 보완이며, 클라이언트가 더 정밀한 시각을
+보내야 한다면 원래 값을 보존하는 별도 스키마 설계가 필요하다.
+
 ## 열려 있음
 
 | ID | 안건 | 출처 | 결정 기한 |

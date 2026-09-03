@@ -169,6 +169,10 @@ input_schema_version     integer = 1
 - `observed_at`: 호출자가 제공하는 RFC 3339 timestamp with offset
 - `created_at`: 서버가 기록하는 저장 시각
 - timestamp는 UTC instant로 변환할 수 있어야 한다.
+- `observed_at`은 microsecond 단위로 정확히 표현할 수 있어야 한다. 그보다 작은
+  유효 소수 부분이 있으면 `INVALID_ARGUMENT`로 거부하며 반올림·절삭하지 않는다.
+  PostgreSQL `timestamptz` 저장 후에도 §4.3의 정확한 비교와 동일 요청 재시도를
+  보장하기 위한 T5 정밀도 보완이다 (2026-09-03). 소수점 표기의 끝 0은 제한하지 않는다.
 - subject foreign key에는 cascade delete를 두지 않는다.
 - 일반 persistence port에는 observation update/delete 연산을 두지 않는다.
 - M0에서는 append-only DB trigger를 추가하지 않는다.
@@ -224,6 +228,7 @@ input_schema_version: 1
 - PROJECT에는 유효한 `subject.key`가 필수다.
 - 인증 identity는 요청 body에서 받지 않는다.
 - `created_at`과 `ingestion_type`은 서버가 결정한다.
+- `observed_at`의 microsecond 정밀도 제한은 §4.2를 따른다.
 - 한 번의 remember 호출은 정확히 하나의 raw observation을 만든다.
 - 서버는 content를 문장이나 사실 단위로 분해하지 않는다.
 

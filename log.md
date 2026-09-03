@@ -7,25 +7,31 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — Task 1 완료, Task 2 인계 대기**
-- **최근 갱신:** 2026-09-02 · Codex (Task 1 커밋·푸시)
-- **브랜치:** `feat/m0`
-- **verify:** L1 39건 / L2 1건 통과(로컬 Docker) · **guardrails:** 11건 통과. gitleaks 미설치로 로컬 시크릿 스캔 생략
+- **마일스톤:** **M0 — Task 2~5 구현·검증 완료**
+- **최근 갱신:** 2026-09-03 · Codex (Task 5 완료)
+- **브랜치:** `codex/m0-t2-t3` (`origin/master`의 `ecc4fb6`에서 시작)
+- **verify:** L1 71건 / L2 33건 통과(로컬 Docker) · **guardrails:** 11건 통과. gitleaks 미설치로 로컬 시크릿 스캔 생략
 
 ### 진행 중
 
-- **Task 1과 인계 규칙 문서를 함께 커밋·푸시한다.** 사용자 요청으로 보관한 문서를
-  이번 변경에 포함한다. Claude Code↔Codex 교차 리뷰는 향후에도 필수 단계가 아니다.
-- **M0 설계·플랜 확정, Task 0 완료, Task 1 구현·검증 완료.**
+- **Task 5 구현·검증 완료. 같은 PR #7에 커밋·푸시하도록 사용자 승인됨.**
+  T2는 `83416e7`, T3는 `f34a583`, T4는 `e348cec`로 커밋·푸시됐다.
+  PR #7은 열려 있으며 병합은 별도 결정이다.
+- **M0 설계·플랜 확정, Task 0~1 병합 완료, Task 2~5 구현·검증 완료.**
   - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
-  - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — 14개 태스크
+  - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — Task 0~14
   - `build.gradle.kts`가 Spring Boot 4.1.1 / Hibernate 7.4.5.Final / jakarta.persistence
     3.2.0 / Flyway 12.4.0 / Spring Framework 7.0.9 위에서 돈다. 자세한 내용은
     `.superpowers/sdd/2026-09-02-overmind-m0/task-0-report.md`
 
 ### 다음 할 일
 
-1. 기존 PR의 CI 결과를 확인하고 병합은 별도 요청에 따른다. Task 2는 별도 인계 시 시작한다.
+1. 같은 PR #7의 T2~T5 변경과 CI를 확인한다. 다음 구현은 사용자 인계에 따른
+   Task 6(HMAC cursor)다. Task 5의 멱등 응답·의미 필드 conflict·원자적 저장은 완료했다.
+   정확한 재시도를 위해 microsecond로 표현 불가능한 `observed_at`은
+   DB 접근 전에 `INVALID_ARGUMENT`로 거부하도록 스펙·플랜에 명시했다.
+   RecallCursor는 자료형만 있고 T6에서 동작을 추가한다. 실제 `findPage`는 T8,
+   `findUser()`는 T7이며 T11은 기존 MemoryConfig의 Clock 빈을 재사용한다.
 2. **Task 10은 사용자 승인이 필요하다** — 의존성 추가(`CLAUDE.md` 권한 표)
 3. **Task 9는 게이트 완화다** — AR-3이 MCP SDK를 `adapter.out` 밖에서 금지하는데
    MCP 서버는 진입 어댑터다. 규칙을 두 갈래로 나눈다. 리뷰에서 가장 주의 깊게 볼 지점
@@ -71,12 +77,81 @@
 
 ### 막힌 것
 
-- 없음. 사용자가 교차 리뷰를 필수 절차에서 제외했으므로 이전 리뷰 호출 차단은
-  Task 1 완료를 막지 않는다.
+- 없음. 교차 리뷰는 사용자 요청이 있을 때만 수행한다.
 
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-03 10:20 · Codex · M0 Task 5 · 본 커밋(git log 참조)
+- **한 일:** RememberMemory를 구현했다. 입력 검증 뒤 트랜잭션 하나에서 기존 조회,
+  subject 생성, insert-or-find와 결과 판정을 수행한다. 기존 행과 경쟁 승자 모두
+  같은 의미 필드 비교를 적용한다. 요청 record의 문자열 표현은 원문을 숨긴다.
+- **결과:** 미구현 클래스의 컴파일 RED 이후 T5 L1 20건과 실제 DB L2 7건이 통과했다.
+  최종 `verify`(L1 71건/L2 33건)와 `guardrails`(11건)가 통과했고 실패·오류·스킵은
+  0건이다. PROJECT key 비교를 제거한 L1과 트랜잭션 경계를 제거한 L2가 각각
+  실패함을 확인하고 복원 후 전체 검증했다. 자체 스펙·diff 대조 실시, 사용자 결정에
+  따라 교차 리뷰는 미실시. 로컬 gitleaks는 생략됐고 CI에서 검사한다.
+- **함정:** PostgreSQL은 sub-microsecond 입력을 정확히 보존하지 않는다. 같은 요청의
+  재시도가 잘못 conflict가 되지 않도록 microsecond로 표현 불가능한 observed_at은
+  트랜잭션 시작 전에 INVALID_ARGUMENT로 거부한다. 반올림·절삭·마이그레이션 없이
+  스펙·플랜·결정 레지스터에 입력 제한을 명시했다. 더 정밀한 입력이 필요하면 별도
+  저장 설계가 필요하다. L2는 두 최초 조회를 barrier로 동기화해 실제 insert 경쟁을
+  보장하고, 다른 PROJECT를 만든 패자의 롤백도 확인했다. 전용 스키마를 사용한다.
+- **다음:** 같은 PR #7에 커밋·푸시하고 제목·설명을 T2~T5로 갱신한다. 다음 태스크는
+  T6이다. fake findUser/findPage는 T7, 실제 keyset 조회는 T8, MCP 연결은 T11이다.
+
+### 2026-09-03 09:43 · Codex · M0 Task 4 · 본 커밋(git log 참조)
+- **한 일:** 영속화 포트와 PostgreSQL insert-or-find 어댑터, 여러 포트 호출을
+  하나로 묶는 트랜잭션 경계를 구현했다. 충돌 대상을 USER partial index,
+  PROJECT type/key, observation 멱등 키로 한정하고 나머지 무결성 오류는 전파한다.
+  T4에 필요한 RecallCursor 자료형·Clock 빈을 먼저 추가하고 후속 플랜도 맞췄다.
+- **결과:** 미구현 포트의 컴파일 RED 이후 통합 테스트 12건이 통과했다.
+  PROJECT 충돌 처리 구문을 제거하면 동시 생성 테스트가 실패하는 것도 확인한 뒤
+  복원했다. 최종 `verify`(L1 51건/L2 26건)와 `guardrails`(11건)가 통과했고
+  실패·오류·스킵은 0건이다. 자체 스펙·diff 대조 실시, 교차 리뷰는 사용자 결정으로
+  미실시. 로컬 gitleaks는 생략됐고 PR의 CI에서 검사한다.
+- **함정:** 상속된 DynamicPropertySource의 URL이 전용 스키마 URL을 덮어썼다.
+  Flyway는 전용 스키마에 성공했지만 Hibernate는 public을 봤다. 테스트에서
+  Flyway·Hikari·Hibernate 스키마를 맞추고 JDBC current_schema까지 검증했다.
+  8개 동시 요청의 반환 ID뿐 아니라 실제 행 수도 세며, 테스트 소유 행만 정리해
+  T3의 public 스키마 검증을 오염시키지 않는다. 새 insert는 호출 객체를 반환하고
+  재조회는 DB 정밀도 값을 반환하므로 sub-microsecond 시각 정책은 T5에서 확인해야 한다.
+- **다음:** 같은 PR #7에 커밋·푸시하고 범위를 T2~T4로 갱신한다. 다음 구현은
+  사용자 인계에 따른 T5이며, 페이지 조회는 T8의 명시적 미구현 상태를 유지한다.
+
+### 2026-09-03 09:19 · Codex · M0 Task 3 · 본 커밋(git log 참조)
+- **한 일:** V2 스키마와 JPA 매핑을 구현했다. USER 단일성, PROJECT key,
+  전역 멱등 키, UTF-8 크기, 외래 키와 recall 인덱스를 DB에서 검증하고,
+  저장·flush·clear·재조회로 모든 매핑 값과 시각의 보존을 확인했다.
+  INV-09 카탈로그는 DB 방어선이 구현된 만큼만 부분 구현으로 갱신했다.
+- **결과:** 자체 스펙·diff 대조와 최종 `verify`(L1 51건/L2 14건),
+  `guardrails`(11건)가 통과했다. 실패·오류·스킵은 0건이다. 사용자 결정에 따라
+  교차 리뷰는 미실시. 로컬 gitleaks는 미설치이며 시크릿 스캔은 CI에서 수행한다.
+- **함정:** 스키마 테스트를 먼저 썼지만 초기 실행은 보고서 파일 잠금과 Docker
+  엔진 정지로 SQL까지 도달하지 못했다. 이를 스키마 RED로 간주하지 않았다.
+  보고서 경로를 분리하고 로컬 Docker를 복구한 뒤 L2를 검증했다. JPA는 타입 부재의
+  컴파일 RED를 확인했다. 플랜의 `btrim(content)`는 탭·Unicode 공백을 놓치므로
+  기존 Java 21 `isBlank()`와 일치시켰다. V2는 검증 후에만 해시를 한 번 기록했고
+  V1과 기존 해시는 보존했다. 해시 기록 후 재수정을 제안하는 플랜 예시는 따르지 않았다.
+- **다음:** 사용자 승인에 따라 새 브랜치를 푸시하고 PR을 생성한다. 병합과
+  T4 착수는 다음 인계에서 정한다. 애플리케이션 영속화 포트의 append-only 계약과
+  원자적 find-or-create는 T4 이후에 구현한다.
+
+### 2026-09-03 00:14 · Codex · M0 Task 2 · 본 커밋(git log 참조)
+- **한 일:** 병합된 T1을 `origin/master`의 `ecc4fb6`에서 인수하고 새 브랜치에서
+  도메인 엔티티와 Clock 기반 관측 시각 정책을 구현했다. 사용자가 T2~T3와
+  커밋·푸시·PR 생성을 승인했으며 T4는 이번 범위에 포함하지 않는다.
+- **결과:** 테스트 선작성의 실패를 확인한 뒤 구현했다. 자체 스펙·diff 대조와
+  `verify`(L1 51건/L2 1건), `guardrails`(11건)가 통과했다. 교차 리뷰는 사용자
+  결정에 따라 미실시. gitleaks 미설치로 로컬 시크릿 스캔은 생략됐다.
+- **함정:** 재조회한 observation을 복원할 때 현재 시각으로 다시 거부하지 않도록
+  생성과 미래 시각 검증을 분리했다. 플랜에 빠진 Observation 필수값·버전·동일성
+  테스트를 추가했고, 5분 경계의 바로 다음 1ns까지 검증했다. 도메인 버전은 양수,
+  MCP 입력의 버전 1 제한은 T11 계약이다.
+- **다음:** T3 V2와 JPA 매핑을 구현·검증한다. V2는 L2 검증을 마친 뒤 해시를
+  한 번 기록한다. 기록 후 수정·재해시를 제안하는 플랜 예시는 append-only 가드와
+  충돌하므로 따르지 않는다. 기존 V1과 해시는 보존한다.
 
 ### 2026-09-02 · Codex · Task 1 커밋·푸시와 교차 리뷰 정책 변경 · 본 커밋(git log 참조)
 

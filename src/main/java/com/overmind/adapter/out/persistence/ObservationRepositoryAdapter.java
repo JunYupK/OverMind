@@ -15,6 +15,7 @@ import jakarta.persistence.EntityManager;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.hibernate.Session;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -75,8 +76,42 @@ public class ObservationRepositoryAdapter implements ObservationRepository {
     @Override
     @Transactional(readOnly = true)
     public RecallPage findPage(List<UUID> subjectIds, RecallCursor cursor, int limit) {
-        // Task 8 replaces this deliberate placeholder with the keyset query.
-        return new RecallPage(List.of(), false);
+        if (subjectIds.isEmpty()) {
+            return new RecallPage(List.of(), false);
+        }
+        String sql =
+                "SELECT {o.*}, {s.*} FROM observation o "
+                        + "JOIN memory_subject s ON s.id = o.subject_id "
+                        + "WHERE o.subject_id IN (:subjectIds) "
+                        + (cursor == null
+                                ? ""
+                                : "AND (o.observed_at, o.created_at, o.id) "
+                                        + "< (:cursorObservedAt, :cursorCreatedAt, :cursorId) ")
+                        + "ORDER BY o.observed_at DESC, o.created_at DESC, o.id DESC "
+                        + "LIMIT :limitPlusOne";
+        // Alias expansion keeps the two entities' id/created_at columns distinct and lets
+        // Hibernate reuse their timestamp mappings. The join avoids per-row subject lookups.
+        var query =
+                entityManager.unwrap(Session.class)
+                        .createNativeQuery(sql, Object[].class)
+                        .addEntity("o", ObservationEntity.class)
+                        .addEntity("s", MemorySubjectEntity.class)
+                        .setParameterList("subjectIds", subjectIds, UUID.class)
+                        .setParameter("limitPlusOne", limit + 1);
+        if (cursor != null) {
+            query.setParameter("cursorObservedAt", cursor.observedAt());
+            query.setParameter("cursorCreatedAt", cursor.createdAt());
+            query.setParameter("cursorId", cursor.id());
+        }
+        List<Object[]> rows = query.getResultList();
+        List<Observation> items =
+                rows.stream()
+                        .limit(limit)
+                        .map(row -> toDomain(
+                                (ObservationEntity) row[0],
+                                toDomain((MemorySubjectEntity) row[1])))
+                        .toList();
+        return new RecallPage(items, rows.size() > limit);
     }
 
     private Observation toDomain(ObservationEntity entity) {
@@ -85,6 +120,10 @@ public class ObservationRepositoryAdapter implements ObservationRepository {
                         .findById(entity.getSubjectId())
                         .map(this::toDomain)
                         .orElseThrow();
+        return toDomain(entity, subject);
+    }
+
+    private Observation toDomain(ObservationEntity entity, MemorySubject subject) {
         return Observation.create(
                 entity.getId(),
                 subject,

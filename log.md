@@ -7,19 +7,18 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — Task 0~7 구현 완료**
-- **최근 갱신:** 2026-09-03 · Claude Code (원격 세션, Task 6~7 완료)
-- **브랜치:** `claude/m0-t6-t7` (`origin/master`의 `d902741`에서 시작)
-- **verify:** L1 105건 통과 / **L2는 이 원격 컨테이너에 Docker가 없어 미실행** ·
-  **guardrails:** 11건 통과 · gitleaks 8.21.2 직접 실행 — `no leaks found`
+- **마일스톤:** **M0 — Task 0~7 병합 완료, Task 8 구현·검증 완료**
+- **최근 갱신:** 2026-09-03 · Codex (Task 8 커밋·푸시·PR)
+- **브랜치:** `codex/m0-t8` (`origin/master`의 `ad19993`에서 시작)
+- **verify:** L1 105건 / L2 41건 통과(로컬 Docker) · **guardrails:** 11건 통과.
+  실패·오류·스킵 0건. gitleaks 미설치로 로컬 시크릿 스캔은 생략됐다.
 
 ### 진행 중
 
-- **Task 6(HMAC cursor)·Task 7(RecallMemory·예산) 구현 완료.** 둘 다 순수 L1이라
-  이 환경에서 **완전히 검증됐다.** 썩힘 실험 3종으로 검사가 실물임을 확인했다 —
-  예산 검사 제거 / cursor fingerprint 대조 제거 / recall이 USER를 만들도록 변경.
-  각각 정확히 해당 테스트만 깨뜨렸다
-- **Task 5까지 `master`(`d902741`)에 병합 완료.**
+- **Task 8 구현·검증 완료. 사용자 요청에 따라 커밋·푸시하고 master 대상 PR을 생성한다.**
+  실제 keyset SQL과 subject 조인 복원을 구현했고, 커밋 전 두 게이트 재검증도 통과했다.
+- **Task 6(HMAC cursor)·Task 7(RecallMemory·예산)은 PR #8로 master에 병합됐다.**
+  T5까지는 PR #7의 `d902741`, T6~T7까지는 `ad19993`이다.
   - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
   - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — Task 0~14
   - `build.gradle.kts`가 Spring Boot 4.1.1 / Hibernate 7.4.5.Final / jakarta.persistence
@@ -28,12 +27,10 @@
 
 ### 다음 할 일
 
-1. **Task 8(keyset L2)** — `ObservationRepositoryAdapter.findPage`의 실제 SQL.
-   지금은 어댑터가 빈 페이지를 돌려주고 L1 fake만 페이징을 흉내낸다.
-   **L2라 Docker 있는 환경에서 해야 한다.**
-   Task 7이 정한 계약: `findPage(subjectIds, cursor, limit)`는 `limit + 1`을 읽어
-   `hasMore`을 판단하고, cursor가 있으면 `(observed_at, created_at, id)` 행 비교로
-   그 위치보다 **엄격히 앞선** 것만 돌려준다. 정렬은 셋 다 DESC
+1. T8 PR의 CI 결과를 확인한다. 병합과 다음 구현인 T9는 별도 인계에 따른다.
+   `findPage`는 이제 실제 SQL로 `limit + 1`을 읽고,
+   `(observed_at, created_at, id)`의 엄격한 `<` 비교와 세 필드 DESC 정렬을 적용한다.
+   T6~T7에서 남겨둔 실제 DB 연결도 로컬 전체 L2에서 확인했다.
 2. **Task 10은 사용자 승인이 필요하다** — 의존성 추가(`CLAUDE.md` 권한 표)
 3. **Task 9는 게이트 완화다** — AR-3이 MCP SDK를 `adapter.out` 밖에서 금지하는데
    MCP 서버는 진입 어댑터다. 규칙을 두 갈래로 나눈다. 리뷰에서 가장 주의 깊게 볼 지점
@@ -88,6 +85,35 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-03 13:10 · Codex · M0 Task 8 커밋·푸시·PR · 본 커밋(git log 참조)
+- **한 일:** 사용자 요청으로 보관 중이던 T8 구현·테스트·문서·로그를 커밋하고,
+  `codex/m0-t8`을 푸시해 master 대상 PR을 생성한다.
+- **결과:** 원격 master가 기준 커밋 `ad19993` 그대로이며 별도 병합이 필요 없음을
+  확인했다. 커밋 전 재실행한 `verify`(L1 105건/L2 41건)와 `guardrails`(11건)가
+  통과했다. 실패·오류·스킵 0건이며 로컬 gitleaks는 미설치로 생략됐다.
+- **함정:** 이전 구현 세션의 미커밋 기록은 당시 상태를 나타내므로 수정하지 않는다.
+  교차 리뷰는 사용자 결정에 따라 미실시하며 자체 스펙·diff 대조와 두 게이트를 유지한다.
+- **다음:** 새 PR의 CI 결과를 확인한다. PR 병합과 T9 착수는 별도 요청에 따른다.
+
+### 2026-09-03 12:43 · Codex · M0 Task 8 · 미커밋
+- **한 일:** T6~T7 병합 커밋 `ad19993`에서 `codex/m0-t8`을 만들고 실제 keyset 조회를
+  구현했다. observation과 subject를 한 native query로 읽어 모든 도메인 값을 복원한다.
+  다음 페이지 확인용 한 행은 응답에서 제외하며, 조회는 read-only transaction이다.
+- **결과:** 빈 페이지 구현에서 조회 관련 L2 6건이 실패함을 확인한 뒤 T8 L2 8건이
+  통과했다. `id DESC`를 제거하면 고정 UUID 정렬 검사가 실제로 실패했고 복원했다.
+  최종 `verify`(L1 105건/L2 41건)와 `guardrails`(11건)는 실패·오류·스킵 0건으로
+  통과했다. 스펙·diff 자체 대조 실시, 교차 리뷰는 사용자 결정에 따라 미실시.
+  로컬 gitleaks는 미설치로 생략됐다.
+- **함정:** 구현 에이전트가 테스트 작성 후 사용량 제한에 걸려, 사용자 재개 요청 후
+  본 에이전트가 이어받았다. SQLException은 Iterable이기도 해서 AssertJ overload가
+  모호했다. Throwable 단언으로 명시한 뒤 실제 미구현 실패를 확인했다. USER를 쓰는
+  테스트끼리 행이 섞이지 않도록 테스트 소유 ID만 정리한다. 두 시각을 모두 고정하고
+  PostgreSQL UUID 정렬의 부호 경계까지 확인해야 마지막 tie-breaker가 검증된다.
+  기본 2 MiB 예산은 현 API 상한에서 도달 불가하므로 기존 T7의 예산 주입을 사용해
+  HMAC 커서가 실제 반환된 마지막 행부터 누락 없이 순회하는지 검증했다.
+- **다음:** T8 구현·검증 범위로 마무리한다. 미커밋 변경과 로그를 보존하며,
+  커밋·푸시·PR 및 T9 착수는 사용자 요청에 따른다.
 
 ### 2026-09-03 · Claude Code (원격 세션) · Task 6 HMAC cursor · Task 7 RecallMemory · claude/m0-t6-t7
 

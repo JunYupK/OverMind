@@ -7,17 +7,19 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — Task 2~5 구현·검증 완료**
-- **최근 갱신:** 2026-09-03 · Codex (Task 5 완료)
-- **브랜치:** `codex/m0-t2-t3` (`origin/master`의 `ecc4fb6`에서 시작)
-- **verify:** L1 71건 / L2 33건 통과(로컬 Docker) · **guardrails:** 11건 통과. gitleaks 미설치로 로컬 시크릿 스캔 생략
+- **마일스톤:** **M0 — Task 0~7 구현 완료**
+- **최근 갱신:** 2026-09-03 · Claude Code (원격 세션, Task 6~7 완료)
+- **브랜치:** `claude/m0-t6-t7` (`origin/master`의 `d902741`에서 시작)
+- **verify:** L1 105건 통과 / **L2는 이 원격 컨테이너에 Docker가 없어 미실행** ·
+  **guardrails:** 11건 통과 · gitleaks 8.21.2 직접 실행 — `no leaks found`
 
 ### 진행 중
 
-- **Task 5 구현·검증 완료. 같은 PR #7에 커밋·푸시하도록 사용자 승인됨.**
-  T2는 `83416e7`, T3는 `f34a583`, T4는 `e348cec`로 커밋·푸시됐다.
-  PR #7은 열려 있으며 병합은 별도 결정이다.
-- **M0 설계·플랜 확정, Task 0~1 병합 완료, Task 2~5 구현·검증 완료.**
+- **Task 6(HMAC cursor)·Task 7(RecallMemory·예산) 구현 완료.** 둘 다 순수 L1이라
+  이 환경에서 **완전히 검증됐다.** 썩힘 실험 3종으로 검사가 실물임을 확인했다 —
+  예산 검사 제거 / cursor fingerprint 대조 제거 / recall이 USER를 만들도록 변경.
+  각각 정확히 해당 테스트만 깨뜨렸다
+- **Task 5까지 `master`(`d902741`)에 병합 완료.**
   - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
   - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — Task 0~14
   - `build.gradle.kts`가 Spring Boot 4.1.1 / Hibernate 7.4.5.Final / jakarta.persistence
@@ -26,12 +28,12 @@
 
 ### 다음 할 일
 
-1. 같은 PR #7의 T2~T5 변경과 CI를 확인한다. 다음 구현은 사용자 인계에 따른
-   Task 6(HMAC cursor)다. Task 5의 멱등 응답·의미 필드 conflict·원자적 저장은 완료했다.
-   정확한 재시도를 위해 microsecond로 표현 불가능한 `observed_at`은
-   DB 접근 전에 `INVALID_ARGUMENT`로 거부하도록 스펙·플랜에 명시했다.
-   RecallCursor는 자료형만 있고 T6에서 동작을 추가한다. 실제 `findPage`는 T8,
-   `findUser()`는 T7이며 T11은 기존 MemoryConfig의 Clock 빈을 재사용한다.
+1. **Task 8(keyset L2)** — `ObservationRepositoryAdapter.findPage`의 실제 SQL.
+   지금은 어댑터가 빈 페이지를 돌려주고 L1 fake만 페이징을 흉내낸다.
+   **L2라 Docker 있는 환경에서 해야 한다.**
+   Task 7이 정한 계약: `findPage(subjectIds, cursor, limit)`는 `limit + 1`을 읽어
+   `hasMore`을 판단하고, cursor가 있으면 `(observed_at, created_at, id)` 행 비교로
+   그 위치보다 **엄격히 앞선** 것만 돌려준다. 정렬은 셋 다 DESC
 2. **Task 10은 사용자 승인이 필요하다** — 의존성 추가(`CLAUDE.md` 권한 표)
 3. **Task 9는 게이트 완화다** — AR-3이 MCP SDK를 `adapter.out` 밖에서 금지하는데
    MCP 서버는 진입 어댑터다. 규칙을 두 갈래로 나눈다. 리뷰에서 가장 주의 깊게 볼 지점
@@ -54,6 +56,10 @@
   M0가 끝나기 전에** 한다. M0를 매일 써 본 경험이 있어야 slot registry 범위·snapshot
   시점·bootstrap 수치를 근거를 갖고 정할 수 있다
 - **B-4 — L3 비용 상한을 강제하는 장치** (기한 M5 이전). 여전히 산문뿐이다
+- **스펙 §5.4의 2 MiB 예산은 공개 API로 도달 불가다.** `limit` 최대 100(§5.2) ×
+  content 최대 16 KiB(§4.2) = 1,638,400 bytes. Task 7은 스펙 수치를 그대로 두되
+  예산을 주입 가능하게 만들어 로직만 검증하고, **도달 불가라는 사실을 못 박는 검사**를
+  넣었다 — 수치가 바뀌면 그 검사가 실패하며 알려 준다. 수치 조정은 결정 사항
 
 
 ### 이월된 결함 — 닫히지 않았고 각각 이유가 있다
@@ -82,6 +88,32 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-03 · Claude Code (원격 세션) · Task 6 HMAC cursor · Task 7 RecallMemory · claude/m0-t6-t7
+
+- **한 일:** `master`(`d902741`)에서 브랜치를 따 Task 6·7을 구현했다.
+  - **Task 6** — `RecallCursor.filterFingerprint(List<UUID>)`, `CursorCodec` 포트,
+    `HmacCursorCodec` 어댑터. 토큰은 `v1.<payload>.<signature>`이고 payload에
+    content·source id·raw subject id를 넣지 않는다. 서명 비교는 `MessageDigest.isEqual`
+  - **Task 7** — `RecallQuery`/`RecallItem`/`RecallResult`/`RecallMemory`.
+    `SubjectRepository.findUser()`를 포트·어댑터·fake에 추가했다(플랜이 예고한 확장).
+    `InMemoryRepositories`의 `findPage`와 seed 헬퍼도 채웠다
+- **결과:** L1 83건 → **105건**. `guardrails` 11건 통과. ArchUnit 통과.
+  gitleaks 직접 실행 `no leaks found`. **`verify`는 완주하지 못했다** — 이 컨테이너에
+  Docker가 없어 L2를 못 돌린다. Task 6·7은 순수 L1이라 로직 자체는 전부 검증됐지만,
+  `SubjectRepository`에 메서드를 더했으므로 **기존 L2가 여전히 도는지는 CI가 판정한다**
+- **함정:** **베이스라인이 먼저 빨갰는데 코드 결함이 아니었다.** 아무것도 안 쓴 상태의
+  `master`에서 `./gradlew test`가 죽길래 Task 5 문제인가 했는데, 원인은 Maven Central의
+  **HTTP 429(Too Many Requests)**였다 — Boot 4.1.1 플러그인이 캐시에 없는 의존성을 새로
+  받아야 했다. 백오프 재시도로 풀렸다. **내 변경 전에 베이스라인을 먼저 돌린 덕에
+  구분됐다.** 안 돌렸으면 내 코드 탓으로 몇 십 분을 태웠을 것이다.
+  둘째: **테스트와 구현을 같이 쓰면 실패를 못 본다.** 105건이 한 번에 초록이 됐는데
+  그것만으로는 검사가 실물인지 알 수 없다. 썩힘 실험 3종을 돌려 각각이 정확히 해당
+  테스트만 깨뜨리는 것을 확인했다.
+  셋째: **주변 코드는 영어 주석을 쓴다.** 플랜은 한국어로 썼지만 Codex 구현이 영어
+  Javadoc에 `Spec §N` 참조 형식이라 거기 맞췄다. 플랜의 코드 블록을 그대로 옮기지 않았다
+- **다음:** Task 8(keyset L2). Docker 있는 환경에서
+
 
 ### 2026-09-03 10:20 · Codex · M0 Task 5 · 본 커밋(git log 참조)
 - **한 일:** RememberMemory를 구현했다. 입력 검증 뒤 트랜잭션 하나에서 기존 조회,

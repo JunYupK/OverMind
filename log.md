@@ -7,11 +7,11 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — Task 0~7 병합 완료, Task 8 구현·검증 완료**
-- **최근 갱신:** 2026-09-03 · Codex (Task 8 커밋·푸시·PR)
-- **브랜치:** `codex/m0-t8` (`origin/master`의 `ad19993`에서 시작)
-- **verify:** L1 105건 / L2 41건 통과(로컬 Docker) · **guardrails:** 11건 통과.
-  실패·오류·스킵 0건. gitleaks 미설치로 로컬 시크릿 스캔은 생략됐다.
+- **마일스톤:** **M0 — Task 0~9 구현 완료**
+- **최근 갱신:** 2026-09-03 · Claude Code (원격 세션, Task 9 완료)
+- **브랜치:** `claude/m0-t9` (`origin/master`의 `a21b6ac`에서 시작)
+- **verify:** L1 111건 통과 / **L2는 이 원격 컨테이너에 Docker가 없어 미실행** ·
+  **guardrails:** 11건 통과 · gitleaks 8.21.2 직접 실행 — `no leaks found`
 
 ### 진행 중
 
@@ -85,6 +85,35 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-03 · Claude Code (원격 세션) · Task 9 AR-3 개정 · claude/m0-t9
+
+- **한 일:** AR-3을 방향별로 나눴다. MCP 서버는 바깥이 우리를 부르는 **진입** 어댑터인데
+  기존 규칙은 `io.modelcontextprotocol..`을 `adapter.out` 밖 어디서도 금지했다 —
+  스펙 §3대로 구현하는 순간 게이트가 실패한다.
+  - `AR_3` — LLM SDK 셋(`com.anthropic`/`com.openai`/`dev.langchain4j`)만 `adapter.out`에 가둔다
+  - `AR_3A` — MCP SDK는 `adapter..` 안이면 진입·진출 어디든. `config`는 어댑터 밖이라
+    여전히 걸린다(빈 등록 시 SDK 타입 직접 참조 금지)
+  - `AR_3B` — **domain·application은 여전히 SDK를 모른다.** Spring AI가 MCP 타입을 자기
+    패키지로 재노출하므로 `org.springframework.ai..`도 함께 막는다
+  - 플랜의 Task 10 Step 5가 참조하던 규칙 이름을 실제 이름에 맞췄다
+- **결과:** L1 105건 → **111건**(`@ArchTest` 2 + `@Test` 4, 예상과 정확히 일치).
+  `guardrails` 11건, gitleaks 통과. **`verify`는 Docker가 없어 완주하지 못했다** —
+  다만 이 태스크는 테스트 코드만 건드리므로 L2 영향은 없다
+- **함정:** **규칙 셋이 전부 공허하게 통과하고 있었다.** AR-3이 지키는 SDK 패키지는
+  Task 10에서 의존성이 들어오기 전까지 classpath에 아예 없다. 즉 "검사할 대상이 없어서"
+  통과하는 중이고, **그 상태는 규칙을 통째로 지운 것과 로그에서 구별되지 않는다.**
+  이 저장소가 반복해서 당한 형태 그대로다.
+  그래서 `LayerRuleCoverageTest`를 따로 뒀다 — 규칙의 *형태*가 실제 위반을 잡는지
+  (`adapter.out` → `jakarta.persistence`는 실제 의존이므로 금지 규칙이 반드시 실패해야 한다),
+  그리고 지키는 패키지 목록이 조용히 좁아지지 않았는지. **`@AnalyzeClasses`를 붙이지 않았다** —
+  ArchUnit 엔진이 `@Test` 메서드를 어떻게 다루는지에 기대면 그 자체가 조용한 미실행 경로가 된다.
+  둘째: **classpath에 없는 패키지로는 썩힘 실험을 못 한다.** 금지 목록에 `java.util..`을
+  임시로 더해 규칙의 *대상 선택*이 살아 있는지 확인했다 — `AR_3B`는 application이,
+  `AR_3A`는 config·domain이 실제로 `java.util`을 쓰므로 반드시 실패한다. 넷 다 정확히
+  해당 검사만 깨뜨렸다. **SDK를 실제로 코어에 끌어들이는 프로브는 Task 10 Step 5 몫이다**
+- **다음:** Task 10(MCP·보안 의존성). **사용자 승인 필요** — 의존성 추가. L2라 Docker 필요
+
 
 ### 2026-09-03 13:10 · Codex · M0 Task 8 커밋·푸시·PR · 본 커밋(git log 참조)
 - **한 일:** 사용자 요청으로 보관 중이던 T8 구현·테스트·문서·로그를 커밋하고,

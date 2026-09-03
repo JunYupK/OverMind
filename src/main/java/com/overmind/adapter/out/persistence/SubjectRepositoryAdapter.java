@@ -58,6 +58,18 @@ public class SubjectRepositoryAdapter implements SubjectRepository {
 
     @Override
     @Transactional(readOnly = true)
+    public Optional<MemorySubject> findUser() {
+        List<?> rows =
+                entityManager
+                        .createNativeQuery("SELECT id FROM memory_subject WHERE type = 'USER'")
+                        .getResultList();
+        return rows.isEmpty()
+                ? Optional.empty()
+                : Optional.of(MemorySubject.user(toUuid(rows.getFirst())));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Optional<MemorySubject> findProject(ProjectKey key) {
         List<?> rows =
                 entityManager

@@ -29,6 +29,18 @@ M0 `remember_memory`는 microsecond 단위로 정확히 표현할 수 있는 `ob
 하지 않는다. 이 제한은 Codex가 T5 구현 중 정한 보완이며, 클라이언트가 더 정밀한 시각을
 보내야 한다면 원래 값을 보존하는 별도 스키마 설계가 필요하다.
 
+### T10 MCP SDK 버전 확인 — 2026-09-03
+
+D-G의 `MCP SDK 2.0.1` 표기는 실제 의존성 해석 결과와 달랐다. 승인된
+`spring-ai-bom:2.0.1`과 `spring-ai-starter-mcp-server-webmvc`를 연결하면
+Spring AI의 `mcp-spring-webmvc`는 **2.0.1**, `io.modelcontextprotocol.sdk:mcp-core`는
+**2.0.0**이다. 캐시에 내려받은 `mcp-spring-webmvc-2.0.1.pom`도 `mcp-core:2.0.0`을
+명시하며, Gradle runtimeClasspath에서 같은 버전으로 해석된다.
+
+T10에서는 플랜이 지정한 BOM 구성을 따르고 MCP SDK를 별도로 강제하지 않는다.
+이는 Codex가 실제 아티팩트에 근거해 한 표기 정정이다. 후속 태스크에서 SDK 타입을
+확인할 때는 Spring AI transport의 2.0.1과 MCP core의 2.0.0을 구분한다.
+
 ## 열려 있음
 
 | ID | 안건 | 출처 | 결정 기한 |

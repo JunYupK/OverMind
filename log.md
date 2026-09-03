@@ -7,18 +7,19 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — Task 0~9 구현 완료**
-- **최근 갱신:** 2026-09-03 · Claude Code (원격 세션, Task 9 완료)
-- **브랜치:** `claude/m0-t9` (`origin/master`의 `a21b6ac`에서 시작)
-- **verify:** L1 111건 통과 / **L2는 이 원격 컨테이너에 Docker가 없어 미실행** ·
-  **guardrails:** 11건 통과 · gitleaks 8.21.2 직접 실행 — `no leaks found`
+- **마일스톤:** **M0 — Task 0~9 병합 완료, Task 10 구현·검증 완료**
+- **최근 갱신:** 2026-09-03 · Codex (Task 10 커밋)
+- **브랜치:** `codex/m0-t10-t14` (`origin/master`의 `fc7abdd`에서 시작)
+- **verify:** L1 111건 / L2 43건 통과(로컬 Docker) · **guardrails:** 11건 통과.
+  실패·오류·스킵 0건. gitleaks 미설치로 로컬 시크릿 스캔은 생략됐다.
 
 ### 진행 중
 
-- **Task 8 구현·검증 완료. 사용자 요청에 따라 커밋·푸시하고 master 대상 PR을 생성한다.**
-  실제 keyset SQL과 subject 조인 복원을 구현했고, 커밋 전 두 게이트 재검증도 통과했다.
-- **Task 6(HMAC cursor)·Task 7(RecallMemory·예산)은 PR #8로 master에 병합됐다.**
-  T5까지는 PR #7의 `d902741`, T6~T7까지는 `ad19993`이다.
+- **Task 10 구현·검증 완료. 사용자 요청으로 본 커밋에 포함한다.** MCP·보안 의존성과
+  `spring.ai.mcp.server.protocol: streamable` 설정을 추가했다. 실제 컨텍스트에서
+  Streamable HTTP 활성·legacy SSE 비활성을 검증했다. T11~T14는 아직 착수하지 않았다.
+- **Task 8은 PR #9(`a21b6ac`), Task 9는 PR #10(`fc7abdd`)으로 master에 병합됐다.**
+  T9가 분리한 AR-3B는 실제 SDK 침투 프로브를 잡았고, 프로브 제거 후 다시 통과했다.
   - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
   - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — Task 0~14
   - `build.gradle.kts`가 Spring Boot 4.1.1 / Hibernate 7.4.5.Final / jakarta.persistence
@@ -27,14 +28,13 @@
 
 ### 다음 할 일
 
-1. T8 PR의 CI 결과를 확인한다. 병합과 다음 구현인 T9는 별도 인계에 따른다.
-   `findPage`는 이제 실제 SQL로 `limit + 1`을 읽고,
-   `(observed_at, created_at, id)`의 엄격한 `<` 비교와 세 필드 DESC 정렬을 적용한다.
-   T6~T7에서 남겨둔 실제 DB 연결도 로컬 전체 L2에서 확인했다.
-2. **Task 10은 사용자 승인이 필요하다** — 의존성 추가(`CLAUDE.md` 권한 표)
-3. **Task 9는 게이트 완화다** — AR-3이 MCP SDK를 `adapter.out` 밖에서 금지하는데
-   MCP 서버는 진입 어댑터다. 규칙을 두 갈래로 나눈다. 리뷰에서 가장 주의 깊게 볼 지점
-4. 설계를 다시 열지 않는다. 스펙과 어긋나는 것이 나오면 스펙을 고치고 그 사실을 남긴다
+1. 사용자 요청에 따라 T10을 커밋한 뒤 같은 브랜치에서 T11 구현을 이어간다.
+   푸시·PR 생성은 이후 전달 요청에 따른다.
+2. 다음 구현 태스크는 T11(MCP 도구·오류 매핑)이다. 기존 Clock 빈을 재사용한다.
+   OAuth 정책·필수 설정 검증은 T12, 로그 위생은 T13, 원격 스모크는 T14에서 이어진다.
+3. **기동 설정 주의:** jar 메타데이터의 protocol 기본값은 `streamable`이지만 실제
+   Streamable 조건은 `matchIfMissing=false`, SSE 조건은 `true`다. 명시한 키를 지우면
+   SSE가 활성화된다. 기본 `type=sync`, `stdio=false`, endpoint `/mcp`는 유지한다.
 
 ### 확정된 결정
 
@@ -44,7 +44,8 @@
 - **A-1~A-4** — M0 설계가 닫았다. Async only / Replay 불변식 / 호출자 제공 idempotency
   key / 실행된 단계의 버전만 기록
 - **D-G — Spring Boot 4.1.1로 올린다** (사용자 승인). D-B의 Boot 3 부분을 대체한다.
-  Java 21 유지(Boot 4 기준선은 Java 17). Spring AI 2.0.1 + MCP SDK 2.0.1
+  Java 21 유지(Boot 4 기준선은 Java 17). Spring AI 2.0.1 BOM을 사용한다.
+  T10 실측에서 transport는 2.0.1, MCP core는 2.0.0으로 확인했다. 결정 문서에 정정 기록.
 전부 `docs/arch/decisions.md`에 있다.
 
 ### 열려 있는 결정
@@ -65,8 +66,8 @@
   (google-java-format으로는 도달할 수 없는 형태라 우선순위를 낮췄다)
 - `@Tag(상수)` 거짓 양성 — 안전한 방향으로 실패하므로 의도적으로 남겼다
 - 바닥 검사는 **발견된** 테스트를 세지 **실행된** 것을 세지 않는다
-- AR-3(LLM SDK 격리)은 대상 SDK가 아직 의존성에 없어 사실상 공허하다.
-  플랜 Task 10이 MCP SDK를 들이면 절반은 실물이 된다
+- AR-3의 LLM SDK 쪽은 대상 의존성이 없어 아직 실물 검증 전이다.
+  MCP/Spring AI 쪽은 T10의 실제 SDK 코어 침투 프로브로 AR-3B 발화를 확인했다.
 - **`FixtureLlmPort`는 M0에서 살아나지 않는다 — M2로 미룬다.** 인수인계에는 "M0 첫 L2
   태스크의 acceptance criterion으로 묶어야 죽지 않는다"고 되어 있었으나, 스펙 §9는 M0에
   실 LLM L3가 없다고 못 박았고 §11은 LLM extraction을 범위 밖으로 뒀다. **M0에는 LLM을
@@ -85,6 +86,34 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-03 13:48 · Codex · M0 Task 10 커밋 · 본 커밋(git log 참조)
+- **한 일:** 사용자 요청에 따라 검증된 T10 구현·문서·인계 로그를 함께 커밋했다.
+- **결과:** 커밋 직전 `verify` L1 111건/L2 43건, `guardrails` 11건 재검증 통과(56초).
+  로컬 gitleaks는 미설치로 생략됐고, 스펙·diff 자체 대조를 유지했다.
+- **함정:** 이전 T10 구현 기록의 미커밋 표기는 당시 상태이므로 보존한다.
+  MCP core 2.0.0과 Spring AI transport 2.0.1의 구분 및 명시 protocol 설정을 인계한다.
+- **다음:** 같은 브랜치에서 T11을 구현한다. 푸시·PR 생성은 요청 시 진행한다.
+
+### 2026-09-03 13:43 · Codex · M0 Task 10 구현·검증 · 미커밋
+- **한 일:** T9 병합 커밋 `fc7abdd`에서 `codex/m0-t10-t14`를 만들고 T10만 구현했다.
+  승인된 Spring AI BOM 2.0.1, WebMVC MCP 서버·보안 의존성을 추가하고
+  `spring.ai.mcp.server.protocol: streamable`을 명시했다. T10 기동 테스트와 인계 문서를 갱신했다.
+- **결과:** 기본 설정에서 Streamable 부재·SSE 활성으로 L2 2건이 먼저 실패했고,
+  설정 후 2건 모두 통과했다. 실제 SDK를 참조한 `application.Probe`를 AR-3B가
+  지목하는 예상 실패를 확인하고 제거했다. 최종 `verify` L1 111건/L2 43건,
+  `guardrails` 11건 통과(57초), 실패·오류·스킵 0건. 로컬 gitleaks는 미설치로 생략.
+  스펙·diff 자체 대조를 수행했고 사용자 결정대로 교차 리뷰는 실시하지 않았다.
+- **함정:** 메타데이터는 protocol 기본값을 `streamable`이라 적지만 자동설정은
+  키가 없으면 SSE를 고른다. `EnabledStreamableServerCondition`의
+  `protocol=STREAMABLE`은 `matchIfMissing=false`, SSE 쪽은 `true`이므로 명시 설정이 필요하다.
+  Spring AI transport는 2.0.1이지만 그 POM과 실제 runtime의 MCP core는 2.0.0이다.
+  별도 SDK 강제 대신 승인된 BOM 구성을 유지하고 `decisions.md`에 기존 표기를 정정했다.
+  기본 `type=sync`, `stdio=false`, endpoint `/mcp`는 그대로다. SSE 부재 검사에서
+  deprecated-for-removal 타입 경고가 생기지만 해당 transport를 실제로 배제하는 검사다.
+  Windows의 SDD 보조 스크립트는 dirname/basename을 못 찾아 PowerShell로 태스크 본문을 추출했다.
+- **다음:** 미커밋 T10 변경과 이 기록을 함께 전달한다. 사용자 요청 시 커밋·푸시·PR을
+  진행하고 T11부터 이어간다. T12 인증 정책과 T14 원격 HTTPS 검증은 이번 완료 범위가 아니다.
 
 ### 2026-09-03 · Claude Code (원격 세션) · Task 9 AR-3 개정 · claude/m0-t9
 

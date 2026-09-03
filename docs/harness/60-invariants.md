@@ -52,8 +52,10 @@
 - **검사:** L2 — 같은 키로 두 번 호출한 뒤 행 수를 센다. DB unique 제약이 1차 방어선.
   `SchemaConstraintTest`가 서로 다른 subject 사이에서도 같은 키의 중복 insert를
   거부하는지 SQL 상태 코드와 제약 이름으로 확인한다.
-- **활성:** M0 · **상태:** 부분 구현 (T3에서 DB 전역 unique와 L2 구현.
-  remember 재시도·conflict·동시성 경로는 후속 태스크에서 검증)
+  `InsertOrFindConcurrencyTest`는 8개 동시 요청의 반환 ID와 실제 행 수, 기존 행 반환,
+  예상하지 않은 무결성 오류 전파, 여러 port 호출의 commit/rollback을 검사한다.
+- **활성:** M0 · **상태:** 부분 구현 (T3 DB 전역 unique와 T4 어댑터 동시성 검증 구현.
+  remember 유스케이스의 멱등 응답·의미 필드 conflict는 후속 태스크에서 검증)
 
 ### INV-07 — 불필요한 검색 금지
 

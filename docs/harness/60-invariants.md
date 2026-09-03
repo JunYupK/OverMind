@@ -12,7 +12,7 @@
 |---|---|---|---|---|
 | INV-01 | 프로바이더 개념이 코어 도메인에 누출되지 않는다 | AR-4 소스 스캔 | M0 | 구현됨 |
 | INV-02 | 로그에 민감 값이 나타나지 않는다 | ArchUnit + L2 로그 캡처 | M0 | 부분 구현 |
-| INV-09 | 동일 idempotency_key로 observation이 중복 적재되지 않는다 | L2 | M0 | 문서화됨 |
+| INV-09 | 동일 idempotency_key로 observation이 중복 적재되지 않는다 | L2 | M0 | 부분 구현 |
 | INV-07 | NONE 질의는 메모리 검색을 호출하지 않는다 | L2 + L3 골든셋 | M1 | 문서화됨 |
 | INV-03 | 일반 canonicalization은 observation을 변경하지 않는다 | L2 체크섬 비교 | M2 | 문서화됨 |
 | INV-04 | SINGLE 슬롯에 상호배타 current 사실이 공존하지 않는다 | L2 + DB 제약 | M2 | 문서화됨 |
@@ -49,8 +49,11 @@
 
 - **진술:** 같은 `idempotency_key`로 두 번 remember해도 observation은 하나만 적재된다.
 - **근거:** review A-3. MCP 클라이언트 재시도와 LLM의 동일 턴 중복 호출이 실재한다
-- **검사:** L2 — 같은 키로 두 번 호출한 뒤 행 수를 센다. DB unique 제약이 1차 방어선
-- **활성:** M0 · **상태:** 문서화됨 (스키마가 생기는 M0 첫 태스크에서 구현)
+- **검사:** L2 — 같은 키로 두 번 호출한 뒤 행 수를 센다. DB unique 제약이 1차 방어선.
+  `SchemaConstraintTest`가 서로 다른 subject 사이에서도 같은 키의 중복 insert를
+  거부하는지 SQL 상태 코드와 제약 이름으로 확인한다.
+- **활성:** M0 · **상태:** 부분 구현 (T3에서 DB 전역 unique와 L2 구현.
+  remember 재시도·conflict·동시성 경로는 후속 태스크에서 검증)
 
 ### INV-07 — 불필요한 검색 금지
 

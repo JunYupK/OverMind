@@ -2,14 +2,18 @@ services:
   db:
     image: pgvector/pgvector:pg16   # L2의 PostgresTestBase와 같은 태그 — 버전 parity
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # ${...} 치환이 아니라 env_file이다 — /opt/overmind/.env는 OVERMIND_TAG
+    # 하나만 담고, 이 서비스의 비밀은 /etc/overmind/db.env가 컨테이너 안으로
+    # 직접 주입한다. 02-app-role.sh도 같은 값(POSTGRES_USER/POSTGRES_DB)을
+    # 컨테이너 환경변수로 그대로 읽는다.
+    env_file: /etc/overmind/db.env
     volumes:
       - overmind-pgdata:/var/lib/postgresql/data
       - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
+      # $$는 compose 자신의 ${...} 치환을 피해 컨테이너 셸에 리터럴 $를 넘기는
+      # 이스케이프다 — env_file로 바뀐 뒤에도 POSTGRES_USER/POSTGRES_DB는
+      # 컨테이너 안에 실제로 존재하므로(db.env가 주입) 그대로 동작한다.
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
@@ -26,7 +30,7 @@ services:
     # 127.0.0.1: 접두사는 필수다 (C-1). 없으면 Docker가 iptables DOCKER 체인에
     # 규칙을 직접 넣어 firewalld를 우회하고 0.0.0.0:8080이 인터넷에 열린다.
     ports: ["127.0.0.1:8080:8080"]
-    env_file: /etc/overmind/overmind.env
+    env_file: /etc/overmind/app.env
     environment:
       SPRING_PROFILES_ACTIVE: production
     networks: [overmind-net]

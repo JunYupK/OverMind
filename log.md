@@ -9,17 +9,20 @@
 
 - **마일스톤:** **M0 — Task 0~14 전부 master 병합 완료.** 남은 것은 코드가 아니라
   실배포·수동 스모크·B-1~B-3 결정이다
-- **최근 갱신:** 2026-09-04 · Claude Code (원격 세션) — Task 5: 배포 자산
-  (Dockerfile, compose, initdb, env 예시, Caddy 예시, README) 추가
+- **최근 갱신:** 2026-09-04 · Claude Code (원격 세션) — Task 5 리뷰 대응:
+  DB 계정 모델을 부트스트랩 superuser와 앱 전용 non-superuser 역할로 분리
 - **브랜치:** `claude/deploy-design` (`origin/master`의 `b0ebb3d`에서 시작)
-- **현재 검증:** 이 브랜치에서 T1~T5가 구현·커밋됐다. T5는
-  `./gradlew guardrails`(`-PbaseRef=origin/master`)로 검증했다 — 로컬에
-  gitleaks가 없어 `gitleaksScan`은 생략됐다("통과"가 아니라 "안 돌았다"). YAML
-  파싱(`python3 -c "import yaml; ..."`)과 `overmind.env.example`의 모든 값이
-  `=` 뒤에 비어 있는지는 직접 grep으로 실측했다. Docker가 없어 `docker build`·
-  `docker compose config`는 실행하지 못했다. 이 환경에는 Docker가 없어
-  L2(`integrationTest`)는 Testcontainers 초기화 단계에서 실패한다(기존 제약,
-  이번 변경과 무관). 게이트 최종 판정은 CI가 한다
+- **현재 검증:** 이 브랜치에서 T1~T5가 구현·커밋됐다. T5는 최초 구현이 리뷰에서
+  Critical 2건으로 반려됐고(계정 모델 미추적, `.env` 덮어쓰기), 리뷰 대응
+  커밋으로 재검증했다: `python3 -c "import yaml; ..."`(compose.yaml 구조),
+  `bash -n`(02-app-role.sh 문법), `grep -nE '^[A-Z_]+=.+' deploy/*.env.example`
+  (두 env 예시 전부 매치 0건), `./gradlew guardrails`(`-PbaseRef=origin/master`,
+  11/11 PASS). **로컬에 gitleaks가 없어 `gitleaksScan`은 계속 생략된다**
+  ("통과"가 아니라 "안 돌았다") — 값이 전부 비어 있음은 grep 실측으로
+  대신했다. Docker가 없어 `docker build`·`docker compose config`·실제
+  기동은 실행하지 못했다 — 계정 분리·역할 GRANT가 실제로 작동하는지는
+  이 환경에서 실측 불가다. L2(`integrationTest`)는 Testcontainers 초기화
+  단계에서 실패한다(기존 제약, 이번 변경과 무관). 게이트 최종 판정은 CI가 한다
 
 ### 진행 중
 
@@ -143,6 +146,47 @@
   `memory:write` 둘뿐이고 `deploy/`·`Dockerfile` 어디에도 `memory:delete`가
   없음을 grep으로 확인했다. **로컬에 gitleaks가 없어 `gitleaksScan`이
   생략됐다** — 이 커밋의 실제 gitleaks 판정은 CI가 한다.
+- **T5가 리뷰에서 Critical 2건으로 반려됐다 — 계정·비밀 모델을 끝까지
+  추적하지 않은 게 원인이었다.** 리뷰가 실측으로 확인한 것:
+  1. `deploy/README.md`의 "최초 1회"가 `/opt/overmind/.env`를
+     `OVERMIND_TAG=` 한 줄로 **덮어써서** `compose.yaml`의 `${POSTGRES_DB}`
+     등 `${...}` 치환이 전부 빈 문자열이 됐다 — postgres 엔트리포인트가 빈
+     `POSTGRES_PASSWORD`에서 하드 실패하고, `db`가 healthy가 안 되니
+     `app`도 `depends_on: service_healthy`에 막혀 영영 못 뜬다.
+  2. `overmind.env.example`이 `OVERMIND_DB_USER`=`POSTGRES_USER`로 쓰라고
+     시켰는데, postgres 공식 이미지는 `POSTGRES_USER`를 `initdb --username`으로
+     **클러스터 superuser**로 만든다 — 그러면 앱이 superuser로 접속하게 되어
+     스펙 §6.2("앱 계정 하나를 쓴다. superuser가 아니다")를 정면으로 어긴다.
+     부수 결과: `01-vector.sql`의 기존 주석이 설명하는 메커니즘(non-superuser
+     Flyway 계정)이 이 설계 아래서는 실제로 존재하지 않았고, §12-3의 스모크
+     (initdb 없이 띄워 Flyway가 권한 오류로 실패하는 것을 본다)는 superuser가
+     그 오류에 아예 안 걸리므로 재현 불가였다.
+- **위 둘을 하나로 고쳤다 — 부트스트랩 superuser와 앱 역할을 분리하고
+  `${...}` 치환을 DB 비밀에서 완전히 뺐다.** `overmind.env.example`을
+  지우고 `deploy/db.env.example`(`POSTGRES_DB`/`POSTGRES_USER`/
+  `POSTGRES_PASSWORD` + `OVERMIND_DB_USER`/`OVERMIND_DB_PASSWORD`, 두 계정이
+  달라야 한다고 명시)과 `deploy/app.env.example`(앱이 읽는 7개 변수,
+  `OVERMIND_DB_URL`은 반드시 `db:5432`를 쓰라는 안내 추가)로 나눴다 — 둘 다
+  모든 값이 `=` 뒤에 비어 있다. `compose.yaml`의 `db`에서 `${...}` 3종
+  `environment:` 블록을 지우고 `env_file: /etc/overmind/db.env`로 바꿨다
+  (healthcheck의 `$$POSTGRES_USER`/`$$POSTGRES_DB`는 컨테이너 안 실제
+  환경변수를 그대로 읽으므로 이스케이핑 변경 없이 그대로 동작함을 확인).
+  `app`의 `env_file`은 `/etc/overmind/app.env`로 이름만 바꿨다. 그 결과
+  `/opt/overmind/.env`에는 이제 `OVERMIND_TAG` 하나만 있으면 되므로,
+  README가 그 줄을 쓰는 기존 동작이 (버그가 아니라) 정확한 동작이 됐다.
+  `deploy/initdb/02-app-role.sh`를 새로 추가 — `01-vector.sql` 다음 순서로
+  postgres superuser로 실행되어 `OVERMIND_DB_USER`를
+  `NOSUPERUSER NOCREATEDB NOCREATEROLE`로 만들고(`\gexec`로 idempotent),
+  `CONNECT`와 `public` 스키마 `USAGE, CREATE`(PG15+ 기본 미부여라 필수)를
+  준다 — 비밀번호를 echo하지 않는다. `01-vector.sql`의 주석을 이 스크립트를
+  가리키도록 고쳐, 지금은 실제로 존재하는 메커니즘을 설명하게 했다.
+  `deploy/README.md`의 "최초 1회"를 두 비밀 파일을 만드는 절차로 바꾸고
+  "첫 기동" 절을 새로 추가해 처음부터 끝까지 그대로 따라 하면 실제로
+  기동되게 했다 — 앱 역할은 **빈 볼륨 최초 기동에서 딱 한 번만** 만들어지고
+  기존 볼륨에는 다시 돌지 않는다는 것도 명시했다. "절대 하지 않는 것"에
+  `POSTGRES_USER`=`OVERMIND_DB_USER` 항목을 추가했다. **Docker가 없어 실제
+  기동·역할 생성·GRANT 효과는 이 환경에서 실측하지 못했다** — YAML 구조,
+  `bash -n` 문법, env 값 공백만 정적으로 확인했다.
 
 ### 다음 할 일
 

@@ -22,8 +22,9 @@ OverMind는 여러 AI 클라이언트(Claude Chat / ChatGPT / Claude Code / Code
    CI가 강제한다. 스펙만 쓴 세션도 예외가 아니다.
    <!-- watched-paths:begin — 가드 코드가 진실이다. WatchedPathSyncGuardTest가 대조한다 -->
    제품 코드(`src/`), 게이트 기계(`build.gradle.kts`, `settings.gradle.kts`,
-   `.github/`, `docs/harness/`), 설계·결정 문서(`docs/superpowers/`,
-   `docs/arch/`, `docs/requirements/`, `AGENTS.md`, `CLAUDE.md`)
+   `.github/`, `docs/harness/`), 배포 자산(`deploy/`, `Dockerfile`),
+   설계·결정 문서(`docs/superpowers/`, `docs/arch/`, `docs/requirements/`,
+   `AGENTS.md`, `CLAUDE.md`)
    <!-- watched-paths:end -->
 4. 커밋 전에 `./gradlew verify`와 `./gradlew guardrails`가 **둘 다** 통과해야 한다.
    CI는 두 잡을 따로 돌린다. `verify`만 보면 CI에서 빨간불을 만난다.

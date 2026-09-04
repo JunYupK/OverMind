@@ -9,11 +9,13 @@
 
 - **마일스톤:** **M0 — Task 0~14 전부 master 병합 완료.** 남은 것은 코드가 아니라
   실배포·수동 스모크·B-1~B-3 결정이다
-- **최근 갱신:** 2026-09-04 · Claude Code (원격 세션) — 배포 설계 브레인스토밍
+- **최근 갱신:** 2026-09-04 · Claude Code (원격 세션) — Task 4: 감시 경로에
+  `deploy/`·`Dockerfile` 추가
 - **브랜치:** `claude/deploy-design` (`origin/master`의 `b0ebb3d`에서 시작)
-- **현재 검증:** master의 `b0ebb3d`까지 CI `verify` + `guardrails` 통과.
-  이 세션은 문서만 추가했다 — 이 환경에는 Docker가 없어 L2를 돌릴 수 없고,
-  게이트 판정은 CI가 한다
+- **현재 검증:** 이 브랜치에서 T1~T4가 구현·커밋됐다. T4는
+  `./gradlew guardrailTest -PbaseRef=origin/master`로 검증했다 — 이 환경에는
+  Docker가 없어 L2(`integrationTest`)는 Testcontainers 초기화 단계에서 실패한다
+  (기존 제약, 이번 변경과 무관). 게이트 최종 판정은 CI가 한다
 
 ### 진행 중
 
@@ -113,29 +115,35 @@
   이 한계를 "이월된 결함"에 등재했다. `integrationTest`(L2)는 이 환경에
   Docker가 없어 `Testcontainers` 초기화 단계에서 실패한다 — 이번 변경과
   무관한 기존 제약이다.
+- **플랜 T4를 구현했다 — 감시 경로에 `deploy/`와 `Dockerfile`을 추가했다.**
+  `LogUpdatedGuardTest`의 `WATCHED_PREFIXES`/`WATCHED_FILES`(진실의 원천)에
+  두 항목을 추가한 뒤, **사본(`AGENTS.md` 규칙 3, `40-guardrails.md`)을 고치기
+  전에 먼저 `./gradlew guardrailTest -PbaseRef=origin/master`를 돌려 대조 검사가
+  실제로 갈라짐을 잡는지 확인했다.** 기대대로 `WatchedPathSyncGuardTest`의
+  `agents_md_copy_matches_the_guard`와 `guardrails_doc_copy_matches_the_guard`가
+  **둘 다 FAILED** — 사본에 `deploy/`·`Dockerfile`이 없다는 것이 정확히 잡혔다.
+  그 다음 두 사본을 고치고 다시 돌려 **11건 전부 PASS**를 확인했다
+  (`[floor] guardrailTest — 테스트 11건 실행 확인`). 기존 원소·순서는 건드리지 않았다.
 
 ### 다음 할 일
 
-1. **플랜 `2026-09-04-overmind-deploy.md`를 실행한다.** 실행 방식(subagent-driven /
-   inline)은 사용자가 정한다. T1이 첫 태스크다
+1. **플랜 `2026-09-04-overmind-deploy.md`를 계속 실행한다.** T1~T4 완료, **T5부터**다
+   (배포 자산·CI·백업). 실행 방식(subagent-driven / inline)은 사용자가 정한다
 2. **구현 전에 채워야 할 미확정 값** (스펙 §부록 B): `nproc`, `free -m`,
    `docker compose version`, 도메인. 앞의 셋은 `mem_limit`과 JVM 힙을,
    도메인은 Caddyfile·`resource`·Auth0 콜백을 정한다
-3. **`deploy/`와 `Dockerfile`을 감시 경로에 추가해야 한다** — `AGENTS.md` 규칙 3,
-   `40-guardrails.md`, `LogUpdatedGuardTest` 세 곳 전부.
-   `WatchedPathSyncGuardTest`가 대조하므로 한 곳만 고치면 CI가 막는다
-4. **코드 격차 0건 남음** (스펙 §7.2). G-1(`denyAll`이 `/.well-known/**`를 삼킨다는 추정)은
+3. **코드 격차 0건 남음** (스펙 §7.2). G-1(`denyAll`이 `/.well-known/**`를 삼킨다는 추정)은
    Task 1 실측으로 반증됐고, G-3(`protectedResourceMetadata` 미활성)은 커밋 `a35fae0`으로,
    G-2(`McpHttpErrors.unauthenticated()`가 `WWW-Authenticate`를 덮어써 `resource_metadata`
    파라미터를 지움)는 Task 2로, G-4(`resource`가 요청 URL에서 나와 리버스 프록시 뒤에서
    루프백을 광고함)는 Task 3으로 각각 구현·해소됐다. 남은 것은 코드가 아니라
    실배포·수동 스모크(스펙 §12)와 B-1~B-3 결정이다
-5. **B-1·B-2·B-3 결정** — 기한이 "M0 완료 전"이다. 실사용 경험이 근거가 되므로
+4. **B-1·B-2·B-3 결정** — 기한이 "M0 완료 전"이다. 실사용 경험이 근거가 되므로
    배포 후에 판단한다
-6. 운영 설정은 `OVERMIND_OIDC_ISSUER`, `OVERMIND_OIDC_AUDIENCE`,
+5. 운영 설정은 `OVERMIND_OIDC_ISSUER`, `OVERMIND_OIDC_AUDIENCE`,
    `OVERMIND_ALLOWED_SUBJECT`, `OVERMIND_CURSOR_SECRET` 모두 필요하다.
    issuer는 HTTPS 절대 URI, HMAC 키는 UTF-8 32바이트 이상이다. 운영 기본 키는 없다
-7. **MCP 기동/변환 주의:** protocol `streamable`을 명시해야 한다. 직접 등록한 도구는
+6. **MCP 기동/변환 주의:** protocol `streamable`을 명시해야 한다. 직접 등록한 도구는
    `validateToolInputs(false)`에 따라 DTO/유스케이스가 입력 검증을 책임진다.
    customizer는 servlet 웹 환경에서만 생성하고 framework customizer에 먼저 위임한다.
    MCP 매퍼의 map-content inclusion `ALWAYS`를 유지해야 명시적인 null이 사라지지 않는다

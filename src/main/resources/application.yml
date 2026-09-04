@@ -17,3 +17,7 @@ spring:
       server:
         # SDK의 metadata 기본값과 달리 auto-config 조건은 키가 없으면 SSE를 고른다.
         protocol: streamable
+
+overmind:
+  security:
+    cursor-secret: ${OVERMIND_CURSOR_SECRET:}

@@ -7,17 +7,18 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — Task 0~9 병합 완료, Task 10 구현·검증 완료**
-- **최근 갱신:** 2026-09-03 · Codex (Task 10 커밋)
+- **마일스톤:** **M0 — Task 0~9 병합 완료, Task 10 커밋 완료, Task 11 구현·검증 완료(미커밋)**
+- **최근 갱신:** 2026-09-03 · Codex (Task 11 완료)
 - **브랜치:** `codex/m0-t10-t14` (`origin/master`의 `fc7abdd`에서 시작)
-- **verify:** L1 111건 / L2 43건 통과(로컬 Docker) · **guardrails:** 11건 통과.
+- **verify:** L1 114건 / L2 72건 통과(로컬 Docker) · **guardrails:** 11건 통과.
   실패·오류·스킵 0건. gitleaks 미설치로 로컬 시크릿 스캔은 생략됐다.
 
 ### 진행 중
 
-- **Task 10 구현·검증 완료. 사용자 요청으로 본 커밋에 포함한다.** MCP·보안 의존성과
-  `spring.ai.mcp.server.protocol: streamable` 설정을 추가했다. 실제 컨텍스트에서
-  Streamable HTTP 활성·legacy SSE 비활성을 검증했다. T11~T14는 아직 착수하지 않았다.
+- **Task 10은 `360024b`로 커밋했다. T11은 같은 브랜치에서 구현·검증했고 미커밋이다.**
+  `remember_memory`·`recall_memory`를 실제 유스케이스·DB와 연결했다. Streamable HTTP로
+  저장·멱등 재시도·페이지 조회·응답 필드·오류 코드와 원문 비노출을 검증했다.
+  T12~T14는 아직 착수하지 않았다.
 - **Task 8은 PR #9(`a21b6ac`), Task 9는 PR #10(`fc7abdd`)으로 master에 병합됐다.**
   T9가 분리한 AR-3B는 실제 SDK 침투 프로브를 잡았고, 프로브 제거 후 다시 통과했다.
   - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
@@ -28,13 +29,19 @@
 
 ### 다음 할 일
 
-1. 사용자 요청에 따라 T10을 커밋한 뒤 같은 브랜치에서 T11 구현을 이어간다.
-   푸시·PR 생성은 이후 전달 요청에 따른다.
-2. 다음 구현 태스크는 T11(MCP 도구·오류 매핑)이다. 기존 Clock 빈을 재사용한다.
-   OAuth 정책·필수 설정 검증은 T12, 로그 위생은 T13, 원격 스모크는 T14에서 이어진다.
+1. 사용자 요청의 T10 커밋과 T11 구현을 완료했다. T11 코드·테스트·플랜·이 로그를
+   함께 보존하고 다음 전달 요청에서 커밋한다. 푸시·PR 생성은 아직 하지 않았다.
+2. 다음 구현 태스크는 T12(OAuth 정책·필수 설정 검증)다. T11의 커서 키는
+   `OVERMIND_CURSOR_SECRET`에서 주입하며 UTF-8 32바이트 이상이 필요하다. 운영 기본 키는
+   없고 테스트에만 고정 키를 제공한다. 로그 위생은 T13, 원격 스모크는 T14에서 이어진다.
 3. **기동 설정 주의:** jar 메타데이터의 protocol 기본값은 `streamable`이지만 실제
    Streamable 조건은 `matchIfMissing=false`, SSE 조건은 `true`다. 명시한 키를 지우면
    SSE가 활성화된다. 기본 `type=sync`, `stdio=false`, endpoint `/mcp`는 유지한다.
+4. **MCP 입력 변환 주의:** 직접 등록한 `SyncToolSpecification`과 DTO 검증을 사용한다.
+   SDK 선행 검증은 `validateToolInputs(false)`로 끄고, servlet customizer에 먼저 위임한다.
+   해당 빈은 웹 환경에서만 생성한다. MCP 전용 JSON 매퍼는 map-content inclusion을
+   `ALWAYS`로 유지해야 명시적인 null이 변환 중 사라지지 않는다. 이후 도구도 자체 검증이
+   필수다. T11 HTTP 테스트의 인증 허용 설정은 테스트 코드에만 있으며 T12를 대신하지 않는다.
 
 ### 확정된 결정
 
@@ -86,6 +93,24 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-03 18:11 · Codex · M0 Task 11 · 미커밋
+- **한 일:** 요청받은 T10을 `360024b`로 커밋하고 같은 브랜치에서 T11을 구현했다.
+  도구 두 개를 유스케이스·실제 HMAC 커서와 연결하고 공개 응답·안전한 오류로 변환했다.
+  SDK의 타입 선변환을 피하기 위해 진입 어댑터의 직접 tool specification 등록을 선택했다.
+- **결과:** `verify` L1 114 / L2 72, `guardrails` 11건 통과. 실패·오류·스킵 0건.
+  실 HTTP 계약 테스트는 28건이다. 부모가 스펙·diff를 대조했으며 사용자 결정에 따라
+  교차 리뷰는 수행하지 않았다. 로컬 gitleaks 미설치로 시크릿 스캔은 생략됐다.
+- **함정:** SDK 선행 스키마 검증은 안전한 오류 매핑 전에 자체 평문 오류를 반환한다.
+  이를 끄되 공개 스키마는 유지하고 DTO/도메인에서 저장 전에 모두 검증한다.
+  Spring AI customizer 주입은 단일 빈이어서 `@Primary`와 기존 servlet 빈 위임이 필요하다.
+  웹 환경 조건이 없으면 기존 비웹 DB 테스트가 기동에 실패하므로 servlet 환경으로 한정했다.
+  null 누락은 처음 의심한 클라이언트 문제가 아니었다. 원시 HTTP와 독립 변환 프로브로
+  Spring AI 매퍼의 `NON_NULL` map-content 설정이 SDK `convertValue`에서 항목을 지우는
+  것을 확인하고 MCP 전용 매퍼만 `ALWAYS`로 변경했다. null을 정상 누락으로 허용하지 않는다.
+  사용량 제한으로 중단된 구현을 부모가 이어받아 최종 검증했다.
+- **다음:** T11 변경 전체를 함께 커밋할 상태로 남겼다. 다음 구현은 T12이며 기존 키 주입,
+  직접 도구 등록과 servlet customizer를 이어받는다. 푸시·PR은 이후 요청에 따른다.
 
 ### 2026-09-03 13:48 · Codex · M0 Task 10 커밋 · 본 커밋(git log 참조)
 - **한 일:** 사용자 요청에 따라 검증된 T10 구현·문서·인계 로그를 함께 커밋했다.

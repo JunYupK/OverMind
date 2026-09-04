@@ -1,0 +1,11 @@
+# 기존 Caddyfile의 flight-friend 블록을 이것으로 교체한다.
+# TLS는 Caddy가 자동으로 발급·갱신한다 (ACME HTTP-01, 80번 포트 필요).
+#
+# 응답이 text/event-stream이면 Caddy가 버퍼링을 자동으로 끄므로 MCP Streamable
+# HTTP의 장수명 스트림에 추가 설정이 필요 없다.
+#
+# 사전 조건: overmind.<도메인>의 A 레코드가 이 인스턴스의 공인 IP를 가리킬 것.
+
+overmind.<도메인> {
+    reverse_proxy 127.0.0.1:8080
+}

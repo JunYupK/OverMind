@@ -1,0 +1,42 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16   # L2의 PostgresTestBase와 같은 태그 — 버전 parity
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - overmind-pgdata:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks: [overmind-net]
+    # mem_limit: <nproc/free -m 확인 후 채운다. README 참조>
+
+  app:
+    image: ghcr.io/junyupk/overmind:${OVERMIND_TAG}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy   # Flyway가 연결 가능한 DB를 만나야 한다
+    # 127.0.0.1: 접두사는 필수다 (C-1). 없으면 Docker가 iptables DOCKER 체인에
+    # 규칙을 직접 넣어 firewalld를 우회하고 0.0.0.0:8080이 인터넷에 열린다.
+    ports: ["127.0.0.1:8080:8080"]
+    env_file: /etc/overmind/overmind.env
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+    networks: [overmind-net]
+    # mem_limit: <위와 같음>
+
+volumes:
+  overmind-pgdata:
+    # external이면 docker compose down -v로도 삭제되지 않는다.
+    # 최초 1회: docker volume create overmind-pgdata
+    external: true
+
+networks:
+  overmind-net:

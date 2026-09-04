@@ -9,13 +9,17 @@
 
 - **마일스톤:** **M0 — Task 0~14 전부 master 병합 완료.** 남은 것은 코드가 아니라
   실배포·수동 스모크·B-1~B-3 결정이다
-- **최근 갱신:** 2026-09-04 · Claude Code (원격 세션) — Task 4: 감시 경로에
-  `deploy/`·`Dockerfile` 추가
+- **최근 갱신:** 2026-09-04 · Claude Code (원격 세션) — Task 5: 배포 자산
+  (Dockerfile, compose, initdb, env 예시, Caddy 예시, README) 추가
 - **브랜치:** `claude/deploy-design` (`origin/master`의 `b0ebb3d`에서 시작)
-- **현재 검증:** 이 브랜치에서 T1~T4가 구현·커밋됐다. T4는
-  `./gradlew guardrailTest -PbaseRef=origin/master`로 검증했다 — 이 환경에는
-  Docker가 없어 L2(`integrationTest`)는 Testcontainers 초기화 단계에서 실패한다
-  (기존 제약, 이번 변경과 무관). 게이트 최종 판정은 CI가 한다
+- **현재 검증:** 이 브랜치에서 T1~T5가 구현·커밋됐다. T5는
+  `./gradlew guardrails`(`-PbaseRef=origin/master`)로 검증했다 — 로컬에
+  gitleaks가 없어 `gitleaksScan`은 생략됐다("통과"가 아니라 "안 돌았다"). YAML
+  파싱(`python3 -c "import yaml; ..."`)과 `overmind.env.example`의 모든 값이
+  `=` 뒤에 비어 있는지는 직접 grep으로 실측했다. Docker가 없어 `docker build`·
+  `docker compose config`는 실행하지 못했다. 이 환경에는 Docker가 없어
+  L2(`integrationTest`)는 Testcontainers 초기화 단계에서 실패한다(기존 제약,
+  이번 변경과 무관). 게이트 최종 판정은 CI가 한다
 
 ### 진행 중
 
@@ -124,14 +128,31 @@
   **둘 다 FAILED** — 사본에 `deploy/`·`Dockerfile`이 없다는 것이 정확히 잡혔다.
   그 다음 두 사본을 고치고 다시 돌려 **11건 전부 PASS**를 확인했다
   (`[floor] guardrailTest — 테스트 11건 실행 확인`). 기존 원소·순서는 건드리지 않았다.
+- **플랜 T5를 구현했다 — 배포 자산 6종.** `Dockerfile`(RUN 없음, 숫자 UID
+  10001, `-XX:MaxRAMPercentage=60`), `deploy/initdb/01-vector.sql`(pgvector를
+  postgres superuser로 미리 생성 — Flyway V1은 앱 계정이라 trusted 아닌 확장을
+  못 만든다), `deploy/compose.yaml`, `deploy/overmind.env.example`,
+  `deploy/Caddyfile.example`, `deploy/README.md`를 브리프 그대로 만들었다.
+  **`mem_limit`은 두 서비스 모두 주석으로 남겼다** — `nproc`/`free -m`으로 실측한
+  값이 아직 없어서다(스펙 §부록 B, H5). 추측한 숫자를 넣지 않았다; README에
+  "채우기 전에는 운영에 쓰지 않는다"고 명시했다. `app` 서비스 포트는
+  `127.0.0.1:8080:8080`(C-1), `db`에는 `ports`가 아예 없다(C-2), 볼륨은
+  `external: true`다 — 셋 다 `python3 -c "import yaml; ..."`로 파싱해 구조적으로
+  확인했다. `overmind.env.example`의 10개 키 전부 `=` 뒤가 비어 있음을
+  `grep -E "^[A-Z_]+=.+"`로 실측했다(매치 0건, C-9). 스코프는 `memory:read`·
+  `memory:write` 둘뿐이고 `deploy/`·`Dockerfile` 어디에도 `memory:delete`가
+  없음을 grep으로 확인했다. **로컬에 gitleaks가 없어 `gitleaksScan`이
+  생략됐다** — 이 커밋의 실제 gitleaks 판정은 CI가 한다.
 
 ### 다음 할 일
 
-1. **플랜 `2026-09-04-overmind-deploy.md`를 계속 실행한다.** T1~T4 완료, **T5부터**다
-   (배포 자산·CI·백업). 실행 방식(subagent-driven / inline)은 사용자가 정한다
+1. **플랜 `2026-09-04-overmind-deploy.md`를 계속 실행한다.** T1~T5 완료,
+   **T6(CI 이미지 빌드)·T7(백업)부터**다. 실행 방식(subagent-driven / inline)은
+   사용자가 정한다
 2. **구현 전에 채워야 할 미확정 값** (스펙 §부록 B): `nproc`, `free -m`,
-   `docker compose version`, 도메인. 앞의 셋은 `mem_limit`과 JVM 힙을,
-   도메인은 Caddyfile·`resource`·Auth0 콜백을 정한다
+   `docker compose version`, 도메인. 앞의 셋은 `compose.yaml`의 `mem_limit`과
+   JVM 힙을(T5가 주석으로 남겨 뒀다), 도메인은 Caddyfile·`resource`·Auth0
+   콜백을 정한다
 3. **코드 격차 0건 남음** (스펙 §7.2). G-1(`denyAll`이 `/.well-known/**`를 삼킨다는 추정)은
    Task 1 실측으로 반증됐고, G-3(`protectedResourceMetadata` 미활성)은 커밋 `a35fae0`으로,
    G-2(`McpHttpErrors.unauthenticated()`가 `WWW-Authenticate`를 덮어써 `resource_metadata`

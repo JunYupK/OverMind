@@ -21,7 +21,23 @@
   사용자와 brainstorming(architectural 경로)으로 진행했고 섹션별 승인을 받았다.
   대상은 사용자의 기존 Oracle Cloud Ampere A1(aarch64, Oracle Linux 8, Docker,
   Caddy). flight-friend를 종료하고 교체한다. 인가 서버는 Auth0 무료 티어(D-J).
-  **다음 단계는 `writing-plans`다. 아직 구현 태스크는 없다.**
+- **구현 플랜을 썼다** — `docs/superpowers/plans/2026-09-04-overmind-deploy.md`, 태스크 9개.
+  T1~T3이 코드(`src/**`), T4가 감시 경로, T5~T7이 배포 자산·CI·백업, T8~T9이 문서다.
+  **T4를 T5보다 먼저 한다** — 감시 경로를 먼저 넓혀야 `deploy/`의 첫 커밋부터 가드가 덮는다.
+  코드가 아닌 손 작업 6건(H1~H6)을 따로 뽑았다. **H5(`nproc`/`free -m`)가 T5의
+  `mem_limit`을 막고, H1(Auth0 테넌트 설정)이 T1~T3의 실효를 막는다.**
+- **플랜을 쓰다가 스펙의 주장 하나가 흔들렸고 새 결함 하나를 찾았다.**
+  `OAuth2ProtectedResourceMetadataFilter`를 바이트코드까지 열어본 결과:
+  - **G-1이 불확실하다.** 이 필터는 `addFilterBefore(..., AbstractPreAuthenticatedProcessingFilter.class)`로
+    설치되어 `AuthorizationFilter`보다 앞이다. `anyRequest().denyAll()`이 삼킨다고
+    스펙에 단정했는데 근거가 약했다. 플랜 T1 Step 2를 **결과를 모르는 검사**로 만들어
+    403인지 404인지 실측하게 했다
+  - **`tls_client_certificate_bound_access_tokens`의 기본값이 `true`다** (바이트코드 `iconst_1`).
+    OverMind는 mTLS를 쓰지 않으므로 켜둔 채면 거짓 메타데이터를 광고한다. 꺼야 한다
+  - **G-4 신규 — `resource`가 요청 URL에서 나온다.** `resolveResourceIdentifier`가
+    `UrlUtils.buildFullRequestUrl`을 쓴다. Caddy 뒤에서 앱은 `http://127.0.0.1:8080`을
+    보므로 그대로면 메타데이터가 루프백을 광고하고 **디스커버리가 통째로 깨진다.**
+    T3이 `forward-headers-strategy: native` + `internal-proxies` 루프백 제한으로 다룬다
 - **조사에서 나온 실증 사실 4건** (전부 1차 근거 확인, 스펙 §부록 A):
   - **pgvector는 `trusted` 확장이 아니다** — `vector.control`에 `trusted = true`가 없다.
     `CREATE EXTENSION vector`는 superuser를 요구하는데 `V1__enable_pgvector.sql`은
@@ -43,7 +59,8 @@
 
 ### 다음 할 일
 
-1. **`writing-plans`로 배포 구현 계획을 만든다.** 스펙을 사용자가 리뷰한 뒤에 시작한다
+1. **플랜 `2026-09-04-overmind-deploy.md`를 실행한다.** 실행 방식(subagent-driven /
+   inline)은 사용자가 정한다. T1이 첫 태스크다
 2. **구현 전에 채워야 할 미확정 값** (스펙 §부록 B): `nproc`, `free -m`,
    `docker compose version`, 도메인. 앞의 셋은 `mem_limit`과 JVM 힙을,
    도메인은 Caddyfile·`resource`·Auth0 콜백을 정한다

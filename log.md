@@ -56,6 +56,17 @@
   중복 방어로 보인다. `SecurityConfig.jwtDecoder`가 싱글턴 빈이라 기동 시
   `requireComplete()`가 동기 호출되므로 프로파일과 무관하게 실패해야 한다.
   **코드 읽기에 근거한 추론이며 실행으로 확인하지 않았다.** 스펙 §12-4가 확인 또는 반증한다
+- **플랜 T1을 구현했다 — RFC 9728 protected resource metadata 활성화.** `SecurityConfig
+  .securityFilterChain`에 `RequiredSettings`를 받아 `protectedResourceMetadata`
+  커스터마이저로 `authorization_servers`·`scopes_supported`(`memory:read`,
+  `memory:write`)를 채우고, 프레임워크 기본값 `tls_client_certificate_bound_access_tokens
+  =true`를 껐다. **G-1은 틀렸다는 것이 실측으로 확인됐다** — 커스터마이저를 넣기 전
+  실패한 테스트의 실제 응답 상태 코드는 **200**이었다(403도 404도 아니었다).
+  `OAuth2ProtectedResourceMetadataFilter`가 `AuthorizationFilter`보다 앞에 설치되어
+  있어 `anyRequest().denyAll()`이 이 경로에 전혀 도달하지 않는다 — 필터는 이미 기본
+  클레임으로 200을 반환하고 있었고, 테스트가 실패한 이유는 `authorization_servers`
+  등 커스텀 클레임이 아직 없었기 때문이다. 그래서 `permitAll` 매처는 추가하지
+  않았다(불필요한 노출면이었을 것). `ProtectedResourceMetadataTest`(L1) 2건 추가.
 
 ### 다음 할 일
 

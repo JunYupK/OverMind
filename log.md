@@ -7,34 +7,51 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — Task 0~9 구현 완료**
-- **최근 갱신:** 2026-09-03 · Claude Code (원격 세션, Task 9 완료)
-- **브랜치:** `claude/m0-t9` (`origin/master`의 `a21b6ac`에서 시작)
-- **verify:** L1 111건 통과 / **L2는 이 원격 컨테이너에 Docker가 없어 미실행** ·
-  **guardrails:** 11건 통과 · gitleaks 8.21.2 직접 실행 — `no leaks found`
+- **마일스톤:** **M0 — Task 0~9 병합 완료, Task 10~13 구현·커밋 완료, PR #11**
+- **최근 갱신:** 2026-09-04 · Codex (T13 커밋·푸시 및 기존 PR #11 갱신)
+- **브랜치:** `codex/m0-t10-t14` (`origin/master`의 `fc7abdd`에서 시작)
+- **현재 검증:** 전체 `verify guardrails` 통과. L1 150 / L2 99 / guardrails 11건,
+  실패·오류·스킵 0건. L2에 T12 인증·권한 20건과 T13 로그 위생 7건 포함. 로컬 gitleaks는
+  미설치로 생략됐으며 실제 외부 OIDC·원격 HTTPS 검증은 이번 게이트 범위가 아니다.
 
 ### 진행 중
 
-- **Task 8 구현·검증 완료. 사용자 요청에 따라 커밋·푸시하고 master 대상 PR을 생성한다.**
-  실제 keyset SQL과 subject 조인 복원을 구현했고, 커밋 전 두 게이트 재검증도 통과했다.
-- **Task 6(HMAC cursor)·Task 7(RecallMemory·예산)은 PR #8로 master에 병합됐다.**
-  T5까지는 PR #7의 `d902741`, T6~T7까지는 `ad19993`이다.
+- **Task 10은 `360024b`, Task 11은 `6aa56d4`, Task 12는 `1c9544a`로 커밋했다.**
+  T11은 `remember_memory`·`recall_memory`의 실제 유스케이스/DB 연결, 입력 검증,
+  응답 계약과 안전한 오류 매핑을 구현했다. 별도로 보존한 staging 스냅샷에서
+  L1 114 / L2 72 / guardrails 11건을 다시 통과한 뒤 커밋했다.
+  T12는 필수 설정 검증, JWT 서명·issuer·audience·subject·시간 검증과 도구별 scope를
+  구현했다. 유효·변형 토큰을 실제 HTTP/MCP로 보내 저장 부작용과 매 요청 권한 검사를
+  확인했다. 두 태스크는 별도 커밋이며 T12까지의 PR #11 CI는 통과했다. T14는 아직 착수하지 않았다.
+- **Task 13은 이 로그를 포함한 커밋으로 마무리했다.** 실제 HTTP·JWT·MCP·DB를
+  거치는 7개 시나리오에서 root TRACE로 content/source/key/token/claim/cursor 누출을
+  검사한다. Tomcat/MCP/PostgreSQL/Hibernate/Security 진단 로거를 제한했고,
+  `LogCapture`는 동시 기록 중 안전한 스냅샷을 만든다. 임시 content INFO 로그를 넣자
+  테스트가 INV-02 위반으로 실패했으며 해당 코드는 제거했다. T13 커밋에
+  설정·테스트·공용 JWT 픽스처 이동·plan·invariants와 이 로그를 함께 포함했다.
+- **Task 8은 PR #9(`a21b6ac`), Task 9는 PR #10(`fc7abdd`)으로 master에 병합됐다.**
   - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
   - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — Task 0~14
-  - `build.gradle.kts`가 Spring Boot 4.1.1 / Hibernate 7.4.5.Final / jakarta.persistence
-    3.2.0 / Flyway 12.4.0 / Spring Framework 7.0.9 위에서 돈다. 자세한 내용은
-    `.superpowers/sdd/2026-09-02-overmind-m0/task-0-report.md`
+  - Spring Boot 4.1.1 / Hibernate 7.4.5.Final / jakarta.persistence 3.2.0 /
+    Flyway 12.4.0 / Spring Framework 7.0.9. 상세는 task-0-report.md와 결정 문서 참조.
 
 ### 다음 할 일
 
-1. T8 PR의 CI 결과를 확인한다. 병합과 다음 구현인 T9는 별도 인계에 따른다.
-   `findPage`는 이제 실제 SQL로 `limit + 1`을 읽고,
-   `(observed_at, created_at, id)`의 엄격한 `<` 비교와 세 필드 DESC 정렬을 적용한다.
-   T6~T7에서 남겨둔 실제 DB 연결도 로컬 전체 L2에서 확인했다.
-2. **Task 10은 사용자 승인이 필요하다** — 의존성 추가(`CLAUDE.md` 권한 표)
-3. **Task 9는 게이트 완화다** — AR-3이 MCP SDK를 `adapter.out` 밖에서 금지하는데
-   MCP 서버는 진입 어댑터다. 규칙을 두 갈래로 나눈다. 리뷰에서 가장 주의 깊게 볼 지점
-4. 설계를 다시 열지 않는다. 스펙과 어긋나는 것이 나오면 스펙을 고치고 그 사실을 남긴다
+1. T10~T13은 같은 브랜치의 PR #11로 전달한다: https://github.com/JunYupK/OverMind/pull/11
+   다음 구현 태스크는 T14이며 사용자 요청 시 착수한다. PR 병합은 별도 요청 전까지 수행하지 않는다.
+2. 운영 설정은 `OVERMIND_OIDC_ISSUER`, `OVERMIND_OIDC_AUDIENCE`,
+   `OVERMIND_ALLOWED_SUBJECT`, `OVERMIND_CURSOR_SECRET` 모두 필요하다.
+   issuer는 HTTPS, HMAC 키는 UTF-8 32바이트 이상이다. 운영 기본 키는 없다.
+   production에서는 필수 값 누락 시 기동에 실패한다. discovery/JWKS는 첫 JWT 검증으로
+   미루며, 외부 issuer와 원격 HTTPS 스모크는 T14에서 확인한다.
+3. T13 테스트는 `src/test/java/com/overmind/support/SignedJwtFixture.java`의 실제 RSA
+   서명 픽스처를 재사용한다. 토큰 검증 실패는 고정 401, scope 부족은 고정 403이다.
+   T11 private 콜백의 self-invocation을 피하려고 security chain 안의 `McpScopeFilter`가
+   SDK dispatch 전에 scope를 검사한다. T11의 permit-all 테스트 설정은 T12 검증에 쓰지 않는다.
+4. **MCP 기동/변환 주의:** protocol `streamable`을 명시해야 한다. 직접 등록한 도구는
+   `validateToolInputs(false)`에 따라 DTO/유스케이스가 입력 검증을 책임진다.
+   customizer는 servlet 웹 환경에서만 생성하고 framework customizer에 먼저 위임한다.
+   MCP 매퍼의 map-content inclusion `ALWAYS`를 유지해야 명시적인 null이 사라지지 않는다.
 
 ### 확정된 결정
 
@@ -44,7 +61,8 @@
 - **A-1~A-4** — M0 설계가 닫았다. Async only / Replay 불변식 / 호출자 제공 idempotency
   key / 실행된 단계의 버전만 기록
 - **D-G — Spring Boot 4.1.1로 올린다** (사용자 승인). D-B의 Boot 3 부분을 대체한다.
-  Java 21 유지(Boot 4 기준선은 Java 17). Spring AI 2.0.1 + MCP SDK 2.0.1
+  Java 21 유지(Boot 4 기준선은 Java 17). Spring AI 2.0.1 BOM을 사용한다.
+  T10 실측에서 transport는 2.0.1, MCP core는 2.0.0으로 확인했다. 결정 문서에 정정 기록.
 전부 `docs/arch/decisions.md`에 있다.
 
 ### 열려 있는 결정
@@ -65,8 +83,8 @@
   (google-java-format으로는 도달할 수 없는 형태라 우선순위를 낮췄다)
 - `@Tag(상수)` 거짓 양성 — 안전한 방향으로 실패하므로 의도적으로 남겼다
 - 바닥 검사는 **발견된** 테스트를 세지 **실행된** 것을 세지 않는다
-- AR-3(LLM SDK 격리)은 대상 SDK가 아직 의존성에 없어 사실상 공허하다.
-  플랜 Task 10이 MCP SDK를 들이면 절반은 실물이 된다
+- AR-3의 LLM SDK 쪽은 대상 의존성이 없어 아직 실물 검증 전이다.
+  MCP/Spring AI 쪽은 T10의 실제 SDK 코어 침투 프로브로 AR-3B 발화를 확인했다.
 - **`FixtureLlmPort`는 M0에서 살아나지 않는다 — M2로 미룬다.** 인수인계에는 "M0 첫 L2
   태스크의 acceptance criterion으로 묶어야 죽지 않는다"고 되어 있었으나, 스펙 §9는 M0에
   실 LLM L3가 없다고 못 박았고 §11은 LLM extraction을 범위 밖으로 뒀다. **M0에는 LLM을
@@ -80,11 +98,96 @@
 
 ### 막힌 것
 
-- 없음. 교차 리뷰는 사용자 요청이 있을 때만 수행한다.
+- 없음. Docker 엔진 기동과 GET /_ping 200 OK를 확인했고 PostgreSQL 통합 테스트도 통과했다.
 
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+### 2026-09-04 10:05 · Codex · T13 커밋·푸시·PR 갱신 · 이 커밋
+- **한 일:** 사용자 요청에 따라 T13 설정·로그 캡처 테스트·공용 JWT 픽스처 이동과 동반 문서를 한 커밋으로 묶고 기존 origin 브랜치 및 PR #11로 전달한다. PR 제목·본문은 T10~T13의 최종 구현 범위에 맞춘다.
+- **결과:** 커밋 전 verify·guardrails 통과 — L1 150/L2 99/guardrails 11, 실패·오류·스킵 0. 기존 누출 삽입 실험은 실패를 확인한 뒤 복원됐고 제품 변경은 그 이후 없다. 스펙·diff 자체 대조 완료, 사용자 결정에 따라 자동 교차 리뷰는 생략한다. 로컬 gitleaks는 미설치이며 CI가 시크릿 검사를 수행한다.
+- **함정:** 같은 브랜치의 열린 PR #11이 있으므로 새 PR을 중복 생성하지 않는다. 기존 T12 SHA의 CI 성공과 T13 푸시 이후 새 CI 상태를 구분한다. log.md 과거 세션은 수정하지 않았다.
+- **다음:** T14는 사용자 요청 시 구현한다. 이번 전달은 커밋·푸시·PR 갱신까지이며 병합은 포함하지 않는다.
+### 2026-09-04 09:49 · Codex · T10~T12 PR / T13 로그 위생 · T13 미커밋
+- **한 일:** 기존 origin/권한을 GitHub로 확인한 뒤 T10~T12를 푸시하고 PR #11을 생성했다. CI run 33822345190은 성공했다. T13에서 공용 JWT 픽스처와 실제 HTTP/DB 로그 캡처 7개 시나리오를 추가하고, 누출이 확인된 Tomcat/MCP/PostgreSQL/Hibernate/Security 진단 로거를 제한했다. root·애플리케이션 로거는 그대로다.
+- **결과:** 최종 verify·guardrails 통과 — L1 150 / L2 99 / guardrails 11건, 실패·오류·스킵 0. content INFO 로그 임시 삽입 시 성공 시나리오가 INV-02 위반으로 실패했고 원본 복원 후 전체 검증했다. 로컬 gitleaks는 미설치로 생략. 구현 스펙·diff 자체 대조 완료, 자동 교차 리뷰는 사용자 결정에 따라 생략했다.
+- **함정:** 플랜 예제의 catchThrowable만으로는 경로 실행을 보장하지 않아 HTTP 결과와 DB 부작용을 함께 단언했다. 부모 DynamicPropertySource의 보안 값이 우선하므로 성공 JWT는 그 값을 사용한다. LogCapture의 ArrayList 순회가 HTTP 로그 추가와 경합해 ConcurrentModificationException을 냈다. 기존 '유틸리티 변경 금지' 예제를 보완해 ListAppender와 같은 monitor로 스냅샷을 복사했으며 캡처 범위를 줄이지 않았다. Security DEBUG는 보호된 credential 문자열과 별개로 scope claim을 출력했다.
+- **다음:** T13은 미커밋으로 보존했다. 다음 커밋에 설정·테스트·JWT helper 이동·plan·invariants·log.md를 함께 포함한다. PR #11은 현재 T10~T12까지만 포함하며 병합하지 않았다. T14는 사용자 요청 후 이어간다.
+### 2026-09-04 09:15 · Codex · T11·T12 검증 및 커밋 · T11 6aa56d4 / T12 이 커밋
+- **한 일:** Docker Desktop을 기동하고 엔진 준비 후 GET /_ping 200 OK를 확인했다. 보존한 T11 index 스냅샷이 커밋 대상 13개 파일과 일치함을 확인하고 독립 검증 뒤 커밋했다. 이어서 T12 production profile의 실제 서명 JWT·MCP·PostgreSQL 경로를 검증하고 별도 커밋으로 마무리했다.
+- **결과:** T11 verify·guardrails L1 114/L2 72/guardrails 11, T12 전체 게이트 L1 150/L2 92/guardrails 11 통과. 모두 실패·오류·스킵 0건. T12 인증·권한 L2는 20건이다. 로컬 gitleaks는 미설치로 생략. 스펙·diff 자체 대조 실시, 교차 리뷰는 사용자 결정대로 미실시.
+- **함정:** Docker 기동 직후에는 no connected NIC/HTTP 500이 나왔으나 준비 후 정상 응답했다. 즉시 재시작하지 말고 기동 상태를 확인한다. 기존 acpid 오류의 근본 원인은 확정하지 않았다. T12 서명 픽스처는 운영 validator 사슬을 공유하며 인증 SecurityContext를 직접 주입하지 않는다. 기존 audience/sub 제거 실험은 각각 관련 2건 실패 후 복원된 상태다.
+- **다음:** 사용자 요청 시 T13 로그 위생. T14 원격 HTTPS·외부 issuer 스모크는 별도 검증이 필요하다. 이번에는 푸시·PR·병합을 수행하지 않았다.
+### 2026-09-03 21:37 · Codex · T11 커밋/T12 검증 재개 · 미커밋
+- **한 일:** 사용자 WSL 서비스 재시작 후 Docker 연결과 backend 로그를 확인했다. 중첩된 종료 요청을 완료하고 Docker 전용 런타임을 다시 띄웠으나 acpid OCI 오류가 재현됐다. staging한 T11 13개 파일은 그대로 보존했고, ignored 디렉터리에 해당 index의 별도 스냅샷을 만들었다.
+- **결과:** Docker 미복구로 전체 verify 미실행 / 코드 리뷰 추가 미실시. 기존 T12 L1 150·guardrails 11 통과 기록은 유지하며 L2와 T11 커밋은 대기한다.
+- **함정:** Docker 버전 응답만으로 엔진 정상 여부를 판단할 수 없다. 초기 GET /_ping은 무응답이었고 이후 엔진은 acpid 생성 실패로 종료했다. WSL 재시작만으로 해결되지 않았으며 반복 종료 명령을 중첩해서 실행하지 않는다. 구버전 Desktop과 현재 WSL의 호환성은 아직 원인으로 확정하지 않았다.
+- **다음:** PC 재부팅 후 Docker API를 확인하고 두 게이트를 실행한다. 이미 staging한 T11만 커밋하고 T12 HTTP/DB 검증을 마무리한다. T13·T14·푸시·PR은 진행하지 않는다.
+
+### 2026-09-03 18:50 · Codex · M0 Task 11 커밋 준비 / Task 12 · 미커밋
+- **한 일:** 요청받은 T11 변경 13개 파일을 staging으로 분리했다. 커밋 전 L2가 Docker
+  ping에서 멈춰 커밋은 보류하고 T12 설정·JWT·도구 scope 필터 및 서명 토큰 테스트를 작성했다.
+  설정은 별도 구현 에이전트가 담당했고 JWT·HTTP 경계·통합 테스트는 부모가 구현·대조했다.
+- **결과:** T12 포함 전체 L1 150건·guardrails 11건 통과, 실패·오류·스킵 0건.
+  audience 제거 시 audience/누락 audience 2건, subject 제거 시 subject/누락 subject 2건이
+  실패하는 것을 확인한 뒤 원복했다. L2는 환경 문제로 검증 전이며 `verify` 통과로 보고하지 않는다.
+  교차 리뷰는 사용자 결정에 따라 하지 않았고 로컬 gitleaks는 미설치로 생략됐다.
+- **함정:** 플랜의 private 콜백 `@PreAuthorize`는 self-invocation을 보호하지 못한다.
+  인증·경로 검사 뒤 SDK dispatch 전에 scope를 검사하고 원래 body를 재전달하도록 보완했다.
+  JWT validator 사슬에 넣은 subject 거절은 401로 고정했고 scope 거절은 403이다.
+  JWT 테스트가 검증 사슬을 복제하지 않도록 운영 메서드를 공유한다.
+  Docker는 HEAD ping/version에는 응답했지만 GET ping이 멈췄다. 실행 컨테이너가 없는 것을
+  확인하고 Desktop 재기동을 시도했다. 이후 no connected NIC/WSL 조회 멈춤을 확인했으며,
+  WSL 서비스 재시작은 Windows 관리자 권한 부족으로 실패했다. 데이터·배포판은 삭제하지 않았다.
+- **다음:** 사용자에게 요청한 관리자 WSL/Docker 복구 후 전체 게이트를 다시 실행한다.
+  T11 staged snapshot과 T12 working tree를 섞지 말고 T11 커밋부터 완료한다.
+  T12 HTTP 권한·세션 재검증·실제 DB 저장 검증을 통과시킨 뒤 T13 착수를 판단한다.
+
+### 2026-09-03 18:11 · Codex · M0 Task 11 · 미커밋
+- **한 일:** 요청받은 T10을 `360024b`로 커밋하고 같은 브랜치에서 T11을 구현했다.
+  도구 두 개를 유스케이스·실제 HMAC 커서와 연결하고 공개 응답·안전한 오류로 변환했다.
+  SDK의 타입 선변환을 피하기 위해 진입 어댑터의 직접 tool specification 등록을 선택했다.
+- **결과:** `verify` L1 114 / L2 72, `guardrails` 11건 통과. 실패·오류·스킵 0건.
+  실 HTTP 계약 테스트는 28건이다. 부모가 스펙·diff를 대조했으며 사용자 결정에 따라
+  교차 리뷰는 수행하지 않았다. 로컬 gitleaks 미설치로 시크릿 스캔은 생략됐다.
+- **함정:** SDK 선행 스키마 검증은 안전한 오류 매핑 전에 자체 평문 오류를 반환한다.
+  이를 끄되 공개 스키마는 유지하고 DTO/도메인에서 저장 전에 모두 검증한다.
+  Spring AI customizer 주입은 단일 빈이어서 `@Primary`와 기존 servlet 빈 위임이 필요하다.
+  웹 환경 조건이 없으면 기존 비웹 DB 테스트가 기동에 실패하므로 servlet 환경으로 한정했다.
+  null 누락은 처음 의심한 클라이언트 문제가 아니었다. 원시 HTTP와 독립 변환 프로브로
+  Spring AI 매퍼의 `NON_NULL` map-content 설정이 SDK `convertValue`에서 항목을 지우는
+  것을 확인하고 MCP 전용 매퍼만 `ALWAYS`로 변경했다. null을 정상 누락으로 허용하지 않는다.
+  사용량 제한으로 중단된 구현을 부모가 이어받아 최종 검증했다.
+- **다음:** T11 변경 전체를 함께 커밋할 상태로 남겼다. 다음 구현은 T12이며 기존 키 주입,
+  직접 도구 등록과 servlet customizer를 이어받는다. 푸시·PR은 이후 요청에 따른다.
+
+### 2026-09-03 13:48 · Codex · M0 Task 10 커밋 · 본 커밋(git log 참조)
+- **한 일:** 사용자 요청에 따라 검증된 T10 구현·문서·인계 로그를 함께 커밋했다.
+- **결과:** 커밋 직전 `verify` L1 111건/L2 43건, `guardrails` 11건 재검증 통과(56초).
+  로컬 gitleaks는 미설치로 생략됐고, 스펙·diff 자체 대조를 유지했다.
+- **함정:** 이전 T10 구현 기록의 미커밋 표기는 당시 상태이므로 보존한다.
+  MCP core 2.0.0과 Spring AI transport 2.0.1의 구분 및 명시 protocol 설정을 인계한다.
+- **다음:** 같은 브랜치에서 T11을 구현한다. 푸시·PR 생성은 요청 시 진행한다.
+
+### 2026-09-03 13:43 · Codex · M0 Task 10 구현·검증 · 미커밋
+- **한 일:** T9 병합 커밋 `fc7abdd`에서 `codex/m0-t10-t14`를 만들고 T10만 구현했다.
+  승인된 Spring AI BOM 2.0.1, WebMVC MCP 서버·보안 의존성을 추가하고
+  `spring.ai.mcp.server.protocol: streamable`을 명시했다. T10 기동 테스트와 인계 문서를 갱신했다.
+- **결과:** 기본 설정에서 Streamable 부재·SSE 활성으로 L2 2건이 먼저 실패했고,
+  설정 후 2건 모두 통과했다. 실제 SDK를 참조한 `application.Probe`를 AR-3B가
+  지목하는 예상 실패를 확인하고 제거했다. 최종 `verify` L1 111건/L2 43건,
+  `guardrails` 11건 통과(57초), 실패·오류·스킵 0건. 로컬 gitleaks는 미설치로 생략.
+  스펙·diff 자체 대조를 수행했고 사용자 결정대로 교차 리뷰는 실시하지 않았다.
+- **함정:** 메타데이터는 protocol 기본값을 `streamable`이라 적지만 자동설정은
+  키가 없으면 SSE를 고른다. `EnabledStreamableServerCondition`의
+  `protocol=STREAMABLE`은 `matchIfMissing=false`, SSE 쪽은 `true`이므로 명시 설정이 필요하다.
+  Spring AI transport는 2.0.1이지만 그 POM과 실제 runtime의 MCP core는 2.0.0이다.
+  별도 SDK 강제 대신 승인된 BOM 구성을 유지하고 `decisions.md`에 기존 표기를 정정했다.
+  기본 `type=sync`, `stdio=false`, endpoint `/mcp`는 그대로다. SSE 부재 검사에서
+  deprecated-for-removal 타입 경고가 생기지만 해당 transport를 실제로 배제하는 검사다.
+  Windows의 SDD 보조 스크립트는 dirname/basename을 못 찾아 PowerShell로 태스크 본문을 추출했다.
+- **다음:** 미커밋 T10 변경과 이 기록을 함께 전달한다. 사용자 요청 시 커밋·푸시·PR을
+  진행하고 T11부터 이어간다. T12 인증 정책과 T14 원격 HTTPS 검증은 이번 완료 범위가 아니다.
 
 ### 2026-09-03 · Claude Code (원격 세션) · Task 9 AR-3 개정 · claude/m0-t9
 

@@ -58,7 +58,13 @@ public final class LogCapture implements AutoCloseable {
 
     /** 캡처된 로그를 렌더링된 문자열로 돌려준다. 예외 스택트레이스 메시지도 포함한다. */
     public List<String> lines() {
-        return appender.list.stream()
+        List<ILoggingEvent> snapshot;
+        // ListAppender writes under AppenderBase.doAppend's monitor. HTTP threads can
+        // append while the test inspects logs, so copy under the same monitor first.
+        synchronized (appender) {
+            snapshot = List.copyOf(appender.list);
+        }
+        return snapshot.stream()
                 .flatMap(
                         event ->
                                 Stream.concat(

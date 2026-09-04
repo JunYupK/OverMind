@@ -12,3 +12,27 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+  ai:
+    mcp:
+      server:
+        # SDK의 metadata 기본값과 달리 auto-config 조건은 키가 없으면 SSE를 고른다.
+        protocol: streamable
+
+overmind:
+  security:
+    issuer: ${OVERMIND_OIDC_ISSUER:}
+    audience: ${OVERMIND_OIDC_AUDIENCE:}
+    allowed-subject: ${OVERMIND_ALLOWED_SUBJECT:}
+    cursor-secret: ${OVERMIND_CURSOR_SECRET:}
+
+logging:
+  level:
+    # Tomcat DEBUG dumps complete incoming bytes, including Authorization and memory payloads.
+    org.apache.coyote.http11.Http11InputBuffer: INFO
+    # SDK deserialization and JDBC diagnostics include raw JSON, bindings, and selected values.
+    io.modelcontextprotocol.spec.McpSchema: INFO
+    org.postgresql.core.v3.QueryExecutorImpl: INFO
+    org.hibernate.orm.jdbc.bind: WARN
+    org.hibernate.orm.jdbc.extract: WARN
+    # Authentication DEBUG includes the granted authorities derived from private JWT claims.
+    org.springframework.security: INFO

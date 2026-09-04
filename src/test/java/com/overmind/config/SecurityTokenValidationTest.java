@@ -1,5 +1,7 @@
 package com.overmind.config;
 
+import com.overmind.support.SignedJwtFixture;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 

@@ -11,7 +11,7 @@
 | ID | 불변식 | 검사 | 활성 | 상태 |
 |---|---|---|---|---|
 | INV-01 | 프로바이더 개념이 코어 도메인에 누출되지 않는다 | AR-4 소스 스캔 | M0 | 구현됨 |
-| INV-02 | 로그에 민감 값이 나타나지 않는다 | ArchUnit + L2 로그 캡처 | M0 | 부분 구현 |
+| INV-02 | 로그에 민감 값이 나타나지 않는다 | ArchUnit + L2 로그 캡처 | M0 | 구현됨 |
 | INV-09 | 동일 idempotency_key로 observation이 중복 적재되지 않는다 | L2 | M0 | 구현됨 |
 | INV-07 | NONE 질의는 메모리 검색을 호출하지 않는다 | L2 + L3 골든셋 | M1 | 문서화됨 |
 | INV-03 | 일반 canonicalization은 observation을 변경하지 않는다 | L2 체크섬 비교 | M2 | 문서화됨 |
@@ -43,7 +43,11 @@
      테스트가 심어둔 매직 스트링이 없는지 확인
   3. 코드 리뷰 — BLOCKING 3번(프라이버시 결함)
   2번이 실질적인 방어선이다. 1번은 흔한 실수를 값싸게 걸러낸다.
-- **활성:** M0 · **상태:** 부분 구현 (1번 구현됨, 2번은 유틸리티만 준비됨)
+- **활성:** M0 · **상태:** 구현됨. T13 `LogHygieneTest`가 실제 HTTP·JWT·MCP·DB 경로의
+  성공, validation 실패, idempotency conflict, invalid cursor, 없는 project, 인증 실패와
+  scope 부족을 root TRACE에서 검사한다. content/source/key/token/claim/cursor 원문이
+  없어야 하며, 진단 로그 수준은 `application.yml`에 명시한다. `LogCapture`는 HTTP
+  스레드의 동시 기록 중에도 안전하게 스냅샷을 읽는다.
 
 ### INV-09 — 관측 멱등성
 

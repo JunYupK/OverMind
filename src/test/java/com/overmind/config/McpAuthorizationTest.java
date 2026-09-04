@@ -1,10 +1,11 @@
 package com.overmind.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static com.overmind.config.SignedJwtFixture.*;
+import static com.overmind.support.SignedJwtFixture.*;
 
 import com.nimbusds.jose.JOSEException;
 import com.overmind.support.PostgresTestBase;
+import com.overmind.support.SignedJwtFixture;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;

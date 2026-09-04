@@ -24,3 +24,15 @@ overmind:
     audience: ${OVERMIND_OIDC_AUDIENCE:}
     allowed-subject: ${OVERMIND_ALLOWED_SUBJECT:}
     cursor-secret: ${OVERMIND_CURSOR_SECRET:}
+
+logging:
+  level:
+    # Tomcat DEBUG dumps complete incoming bytes, including Authorization and memory payloads.
+    org.apache.coyote.http11.Http11InputBuffer: INFO
+    # SDK deserialization and JDBC diagnostics include raw JSON, bindings, and selected values.
+    io.modelcontextprotocol.spec.McpSchema: INFO
+    org.postgresql.core.v3.QueryExecutorImpl: INFO
+    org.hibernate.orm.jdbc.bind: WARN
+    org.hibernate.orm.jdbc.extract: WARN
+    # Authentication DEBUG includes the granted authorities derived from private JWT claims.
+    org.springframework.security: INFO

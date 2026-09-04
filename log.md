@@ -7,22 +7,28 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — Task 0~9 병합 완료, Task 10~12 구현·커밋 완료**
-- **최근 갱신:** 2026-09-04 · Codex (Docker 복구 확인, T11·T12 검증 및 커밋)
+- **마일스톤:** **M0 — Task 0~9 병합 완료, Task 10~13 구현·커밋 완료, PR #11**
+- **최근 갱신:** 2026-09-04 · Codex (T13 커밋·푸시 및 기존 PR #11 갱신)
 - **브랜치:** `codex/m0-t10-t14` (`origin/master`의 `fc7abdd`에서 시작)
-- **현재 검증:** 전체 `verify guardrails` 통과. L1 150 / L2 92 / guardrails 11건,
-  실패·오류·스킵 0건. L2에 T12 인증·권한 HTTP/DB 20건 포함. 로컬 gitleaks는
+- **현재 검증:** 전체 `verify guardrails` 통과. L1 150 / L2 99 / guardrails 11건,
+  실패·오류·스킵 0건. L2에 T12 인증·권한 20건과 T13 로그 위생 7건 포함. 로컬 gitleaks는
   미설치로 생략됐으며 실제 외부 OIDC·원격 HTTPS 검증은 이번 게이트 범위가 아니다.
 
 ### 진행 중
 
-- **Task 10은 `360024b`, Task 11은 `6aa56d4`, Task 12는 이 로그를 포함한 커밋이다.**
+- **Task 10은 `360024b`, Task 11은 `6aa56d4`, Task 12는 `1c9544a`로 커밋했다.**
   T11은 `remember_memory`·`recall_memory`의 실제 유스케이스/DB 연결, 입력 검증,
   응답 계약과 안전한 오류 매핑을 구현했다. 별도로 보존한 staging 스냅샷에서
   L1 114 / L2 72 / guardrails 11건을 다시 통과한 뒤 커밋했다.
   T12는 필수 설정 검증, JWT 서명·issuer·audience·subject·시간 검증과 도구별 scope를
   구현했다. 유효·변형 토큰을 실제 HTTP/MCP로 보내 저장 부작용과 매 요청 권한 검사를
-  확인했다. 두 태스크는 별도 커밋이며 T13~T14는 아직 착수하지 않았다.
+  확인했다. 두 태스크는 별도 커밋이며 T12까지의 PR #11 CI는 통과했다. T14는 아직 착수하지 않았다.
+- **Task 13은 이 로그를 포함한 커밋으로 마무리했다.** 실제 HTTP·JWT·MCP·DB를
+  거치는 7개 시나리오에서 root TRACE로 content/source/key/token/claim/cursor 누출을
+  검사한다. Tomcat/MCP/PostgreSQL/Hibernate/Security 진단 로거를 제한했고,
+  `LogCapture`는 동시 기록 중 안전한 스냅샷을 만든다. 임시 content INFO 로그를 넣자
+  테스트가 INV-02 위반으로 실패했으며 해당 코드는 제거했다. T13 커밋에
+  설정·테스트·공용 JWT 픽스처 이동·plan·invariants와 이 로그를 함께 포함했다.
 - **Task 8은 PR #9(`a21b6ac`), Task 9는 PR #10(`fc7abdd`)으로 master에 병합됐다.**
   - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
   - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — Task 0~14
@@ -31,14 +37,14 @@
 
 ### 다음 할 일
 
-1. 다음 구현 태스크는 T13 로그 위생이다. 사용자가 착수를 요청하면 이어간다.
-   이번 요청은 T11·T12 검증 후 커밋까지이며 푸시·PR은 수행하지 않았다.
+1. T10~T13은 같은 브랜치의 PR #11로 전달한다: https://github.com/JunYupK/OverMind/pull/11
+   다음 구현 태스크는 T14이며 사용자 요청 시 착수한다. PR 병합은 별도 요청 전까지 수행하지 않는다.
 2. 운영 설정은 `OVERMIND_OIDC_ISSUER`, `OVERMIND_OIDC_AUDIENCE`,
    `OVERMIND_ALLOWED_SUBJECT`, `OVERMIND_CURSOR_SECRET` 모두 필요하다.
    issuer는 HTTPS, HMAC 키는 UTF-8 32바이트 이상이다. 운영 기본 키는 없다.
    production에서는 필수 값 누락 시 기동에 실패한다. discovery/JWKS는 첫 JWT 검증으로
    미루며, 외부 issuer와 원격 HTTPS 스모크는 T14에서 확인한다.
-3. T13 테스트는 `src/test/java/com/overmind/config/SignedJwtFixture.java`의 실제 RSA
+3. T13 테스트는 `src/test/java/com/overmind/support/SignedJwtFixture.java`의 실제 RSA
    서명 픽스처를 재사용한다. 토큰 검증 실패는 고정 401, scope 부족은 고정 403이다.
    T11 private 콜백의 self-invocation을 피하려고 security chain 안의 `McpScopeFilter`가
    SDK dispatch 전에 scope를 검사한다. T11의 permit-all 테스트 설정은 T12 검증에 쓰지 않는다.
@@ -97,6 +103,16 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+### 2026-09-04 10:05 · Codex · T13 커밋·푸시·PR 갱신 · 이 커밋
+- **한 일:** 사용자 요청에 따라 T13 설정·로그 캡처 테스트·공용 JWT 픽스처 이동과 동반 문서를 한 커밋으로 묶고 기존 origin 브랜치 및 PR #11로 전달한다. PR 제목·본문은 T10~T13의 최종 구현 범위에 맞춘다.
+- **결과:** 커밋 전 verify·guardrails 통과 — L1 150/L2 99/guardrails 11, 실패·오류·스킵 0. 기존 누출 삽입 실험은 실패를 확인한 뒤 복원됐고 제품 변경은 그 이후 없다. 스펙·diff 자체 대조 완료, 사용자 결정에 따라 자동 교차 리뷰는 생략한다. 로컬 gitleaks는 미설치이며 CI가 시크릿 검사를 수행한다.
+- **함정:** 같은 브랜치의 열린 PR #11이 있으므로 새 PR을 중복 생성하지 않는다. 기존 T12 SHA의 CI 성공과 T13 푸시 이후 새 CI 상태를 구분한다. log.md 과거 세션은 수정하지 않았다.
+- **다음:** T14는 사용자 요청 시 구현한다. 이번 전달은 커밋·푸시·PR 갱신까지이며 병합은 포함하지 않는다.
+### 2026-09-04 09:49 · Codex · T10~T12 PR / T13 로그 위생 · T13 미커밋
+- **한 일:** 기존 origin/권한을 GitHub로 확인한 뒤 T10~T12를 푸시하고 PR #11을 생성했다. CI run 33822345190은 성공했다. T13에서 공용 JWT 픽스처와 실제 HTTP/DB 로그 캡처 7개 시나리오를 추가하고, 누출이 확인된 Tomcat/MCP/PostgreSQL/Hibernate/Security 진단 로거를 제한했다. root·애플리케이션 로거는 그대로다.
+- **결과:** 최종 verify·guardrails 통과 — L1 150 / L2 99 / guardrails 11건, 실패·오류·스킵 0. content INFO 로그 임시 삽입 시 성공 시나리오가 INV-02 위반으로 실패했고 원본 복원 후 전체 검증했다. 로컬 gitleaks는 미설치로 생략. 구현 스펙·diff 자체 대조 완료, 자동 교차 리뷰는 사용자 결정에 따라 생략했다.
+- **함정:** 플랜 예제의 catchThrowable만으로는 경로 실행을 보장하지 않아 HTTP 결과와 DB 부작용을 함께 단언했다. 부모 DynamicPropertySource의 보안 값이 우선하므로 성공 JWT는 그 값을 사용한다. LogCapture의 ArrayList 순회가 HTTP 로그 추가와 경합해 ConcurrentModificationException을 냈다. 기존 '유틸리티 변경 금지' 예제를 보완해 ListAppender와 같은 monitor로 스냅샷을 복사했으며 캡처 범위를 줄이지 않았다. Security DEBUG는 보호된 credential 문자열과 별개로 scope claim을 출력했다.
+- **다음:** T13은 미커밋으로 보존했다. 다음 커밋에 설정·테스트·JWT helper 이동·plan·invariants·log.md를 함께 포함한다. PR #11은 현재 T10~T12까지만 포함하며 병합하지 않았다. T14는 사용자 요청 후 이어간다.
 ### 2026-09-04 09:15 · Codex · T11·T12 검증 및 커밋 · T11 6aa56d4 / T12 이 커밋
 - **한 일:** Docker Desktop을 기동하고 엔진 준비 후 GET /_ping 200 OK를 확인했다. 보존한 T11 index 스냅샷이 커밋 대상 13개 파일과 일치함을 확인하고 독립 검증 뒤 커밋했다. 이어서 T12 production profile의 실제 서명 JWT·MCP·PostgreSQL 경로를 검증하고 별도 커밋으로 마무리했다.
 - **결과:** T11 verify·guardrails L1 114/L2 72/guardrails 11, T12 전체 게이트 L1 150/L2 92/guardrails 11 통과. 모두 실패·오류·스킵 0건. T12 인증·권한 L2는 20건이다. 로컬 gitleaks는 미설치로 생략. 스펙·diff 자체 대조 실시, 교차 리뷰는 사용자 결정대로 미실시.

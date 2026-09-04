@@ -55,7 +55,7 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(
-            HttpSecurity http, JwtDecoder decoder,
+            HttpSecurity http, JwtDecoder decoder, RequiredSettings settings,
             @Qualifier("mcpServerJsonMapper") JsonMapper mapper) throws Exception {
         DefaultBearerTokenResolver tokens = new DefaultBearerTokenResolver();
         tokens.setAllowUriQueryParameter(false);
@@ -68,12 +68,23 @@ public class SecurityConfig {
                         .requestMatchers("/mcp").authenticated()
                         .anyRequest().denyAll())
                 .exceptionHandling(errors -> errors
-                        .authenticationEntryPoint((request, response, failure) -> McpHttpErrors.unauthenticated(response))
+                        .authenticationEntryPoint((request, response, failure) -> McpHttpErrors.unauthenticated(request, response))
                         .accessDeniedHandler((request, response, failure) -> McpHttpErrors.forbidden(response)))
                 .oauth2ResourceServer(resource -> resource
                         .bearerTokenResolver(tokens)
                         .jwt(jwt -> jwt.decoder(decoder))
-                        .authenticationEntryPoint((request, response, failure) -> McpHttpErrors.unauthenticated(response))
+                        // RFC 9728. MCP 클라이언트는 이 문서로 인가 서버를 찾는다.
+                        // authorization_servers와 scopes_supported에는 프레임워크 기본값이 없다.
+                        .protectedResourceMetadata(metadata -> metadata
+                                .protectedResourceMetadataCustomizer(document -> document
+                                        .authorizationServer(settings.issuer())
+                                        .scope("memory:read")
+                                        .scope("memory:write")
+                                        .resourceName("OverMind")
+                                        // 기본값이 true다. mTLS를 쓰지 않으므로 끈다 —
+                                        // 하지 않는 보안 속성을 광고하면 안 된다.
+                                        .tlsClientCertificateBoundAccessTokens(false)))
+                        .authenticationEntryPoint((request, response, failure) -> McpHttpErrors.unauthenticated(request, response))
                         .accessDeniedHandler((request, response, failure) -> McpHttpErrors.forbidden(response)))
                 .addFilterAfter(new McpScopeFilter(mapper), AuthorizationFilter.class)
                 .build();

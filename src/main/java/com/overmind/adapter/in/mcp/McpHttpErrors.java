@@ -1,5 +1,6 @@
 package com.overmind.adapter.in.mcp;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
@@ -7,8 +8,15 @@ import java.io.IOException;
 public final class McpHttpErrors {
     private McpHttpErrors() {}
 
-    public static void unauthenticated(HttpServletResponse response) throws IOException {
-        response.setHeader("WWW-Authenticate", "Bearer");
+    /**
+     * MCP 클라이언트는 이 헤더의 {@code resource_metadata}를 보고 인가 서버를 찾는다.
+     * 그 URL 외에는 아무것도 싣지 않는다 — {@code error}나 {@code error_description}은
+     * 실패 사유를 흘리므로 넣지 않는다.
+     */
+    public static void unauthenticated(HttpServletRequest request, HttpServletResponse response)
+            throws IOException {
+        response.setHeader("WWW-Authenticate",
+                "Bearer resource_metadata=\"" + ResourceIdentity.metadataUrl(request) + "\"");
         write(response, 401, "UNAUTHENTICATED", "authentication required");
     }
 

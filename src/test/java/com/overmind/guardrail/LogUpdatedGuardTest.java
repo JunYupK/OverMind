@@ -100,10 +100,11 @@ class LogUpdatedGuardTest {
                     "docs/harness/",
                     "docs/superpowers/",
                     "docs/arch/",
-                    "docs/requirements/");
+                    "docs/requirements/",
+                    "deploy/");
 
     static final List<String> WATCHED_FILES =
-            List.of("build.gradle.kts", "settings.gradle.kts", "AGENTS.md", "CLAUDE.md");
+            List.of("build.gradle.kts", "settings.gradle.kts", "AGENTS.md", "CLAUDE.md", "Dockerfile");
 
     /**
      * 변경 경로를 받아오는 명령. 테스트가 같은 인자를 쓰므로 {@code -z}가 빠지면 드러난다.

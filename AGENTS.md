@@ -41,6 +41,7 @@ OverMind는 여러 AI 클라이언트(Claude Chat / ChatGPT / Claude Code / Code
 | 커밋·푸시·마이그레이션·시크릿 | `docs/harness/40-guardrails.md` (커맨드는 `./gradlew guardrails`) |
 | 남의 코드를 리뷰하려 함 | `docs/harness/50-review-protocol.md` |
 | 이 변경이 무엇을 깨면 안 되는지 확인 | `docs/harness/60-invariants.md` |
+| M0가 실제로 도는지 손으로 확인 | `docs/harness/70-m0-smoke.md` |
 | 아키텍처 배경이 궁금함 | `docs/arch/baseline-v0.1.md`, `docs/arch/review-v0.1.md` |
 | 무엇이 이미 정해졌는지 확인 | `docs/arch/decisions.md` |
 | 이 기능이 왜 필요한지 확인 | `docs/requirements/R1-R6.md` |

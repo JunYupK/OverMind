@@ -81,7 +81,7 @@ class ProtectedResourceMetadataTest {
             assertThat(response.getHeader("WWW-Authenticate"))
                     .as("이 파라미터가 없으면 Claude 웹은 어디서 로그인해야 하는지 알 수 없다")
                     .contains("resource_metadata=")
-                    .contains("/.well-known/oauth-protected-resource/mcp");
+                    .contains(METADATA);
         });
     }
 

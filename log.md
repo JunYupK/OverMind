@@ -97,11 +97,11 @@
 3. **`deploy/`와 `Dockerfile`을 감시 경로에 추가해야 한다** — `AGENTS.md` 규칙 3,
    `40-guardrails.md`, `LogUpdatedGuardTest` 세 곳 전부.
    `WatchedPathSyncGuardTest`가 대조하므로 한 곳만 고치면 CI가 막는다
-4. **코드 격차 2건 남음** (스펙 §7.2). G-1(`denyAll`이 `/.well-known/**`를 삼킨다는 추정)은
-   Task 1 실측으로 반증됐고, G-3(`protectedResourceMetadata` 미활성)은 커밋 `a35fae0`으로
-   구현됐다. 남은 것: **G-2**(`McpHttpErrors.unauthenticated()`가 `WWW-Authenticate`를
-   덮어써 `resource_metadata` 파라미터를 지움 — 실질적 차단 지점, Task 2가 다룬다)와
-   **G-4**(`resource`가 요청 URL에서 나와 리버스 프록시 뒤에서 루프백을 광고함, Task 3)
+4. **코드 격차 1건 남음** (스펙 §7.2). G-1(`denyAll`이 `/.well-known/**`를 삼킨다는 추정)은
+   Task 1 실측으로 반증됐고, G-3(`protectedResourceMetadata` 미활성)은 커밋 `a35fae0`으로,
+   G-2(`McpHttpErrors.unauthenticated()`가 `WWW-Authenticate`를 덮어써 `resource_metadata`
+   파라미터를 지움)는 Task 2로 각각 구현·해소됐다. 남은 것: **G-4**(`resource`가 요청
+   URL에서 나와 리버스 프록시 뒤에서 루프백을 광고함, Task 3)
 5. **B-1·B-2·B-3 결정** — 기한이 "M0 완료 전"이다. 실사용 경험이 근거가 되므로
    배포 후에 판단한다
 6. 운영 설정은 `OVERMIND_OIDC_ISSUER`, `OVERMIND_OIDC_AUDIENCE`,

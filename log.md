@@ -7,51 +7,61 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — Task 0~9 병합 완료, Task 10~13 구현·커밋 완료, PR #11**
-- **최근 갱신:** 2026-09-04 · Codex (T13 커밋·푸시 및 기존 PR #11 갱신)
-- **브랜치:** `codex/m0-t10-t14` (`origin/master`의 `fc7abdd`에서 시작)
-- **현재 검증:** 전체 `verify guardrails` 통과. L1 150 / L2 99 / guardrails 11건,
-  실패·오류·스킵 0건. L2에 T12 인증·권한 20건과 T13 로그 위생 7건 포함. 로컬 gitleaks는
-  미설치로 생략됐으며 실제 외부 OIDC·원격 HTTPS 검증은 이번 게이트 범위가 아니다.
+- **마일스톤:** **M0 — Task 0~14 전부 master 병합 완료.** 남은 것은 코드가 아니라
+  실배포·수동 스모크·B-1~B-3 결정이다
+- **최근 갱신:** 2026-09-04 · Claude Code (원격 세션) — 배포 설계 브레인스토밍
+- **브랜치:** `claude/deploy-design` (`origin/master`의 `b0ebb3d`에서 시작)
+- **현재 검증:** master의 `b0ebb3d`까지 CI `verify` + `guardrails` 통과.
+  이 세션은 문서만 추가했다 — 이 환경에는 Docker가 없어 L2를 돌릴 수 없고,
+  게이트 판정은 CI가 한다
 
 ### 진행 중
 
-- **Task 10은 `360024b`, Task 11은 `6aa56d4`, Task 12는 `1c9544a`로 커밋했다.**
-  T11은 `remember_memory`·`recall_memory`의 실제 유스케이스/DB 연결, 입력 검증,
-  응답 계약과 안전한 오류 매핑을 구현했다. 별도로 보존한 staging 스냅샷에서
-  L1 114 / L2 72 / guardrails 11건을 다시 통과한 뒤 커밋했다.
-  T12는 필수 설정 검증, JWT 서명·issuer·audience·subject·시간 검증과 도구별 scope를
-  구현했다. 유효·변형 토큰을 실제 HTTP/MCP로 보내 저장 부작용과 매 요청 권한 검사를
-  확인했다. 두 태스크는 별도 커밋이며 T12까지의 PR #11 CI는 통과했다. T14는 아직 착수하지 않았다.
-- **Task 13은 이 로그를 포함한 커밋으로 마무리했다.** 실제 HTTP·JWT·MCP·DB를
-  거치는 7개 시나리오에서 root TRACE로 content/source/key/token/claim/cursor 누출을
-  검사한다. Tomcat/MCP/PostgreSQL/Hibernate/Security 진단 로거를 제한했고,
-  `LogCapture`는 동시 기록 중 안전한 스냅샷을 만든다. 임시 content INFO 로그를 넣자
-  테스트가 INV-02 위반으로 실패했으며 해당 코드는 제거했다. T13 커밋에
-  설정·테스트·공용 JWT 픽스처 이동·plan·invariants와 이 로그를 함께 포함했다.
-- **Task 8은 PR #9(`a21b6ac`), Task 9는 PR #10(`fc7abdd`)으로 master에 병합됐다.**
-  - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
-  - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — Task 0~14
-  - Spring Boot 4.1.1 / Hibernate 7.4.5.Final / jakarta.persistence 3.2.0 /
-    Flyway 12.4.0 / Spring Framework 7.0.9. 상세는 task-0-report.md와 결정 문서 참조.
+- **배포 설계 스펙을 썼다** — `docs/superpowers/specs/2026-09-04-overmind-deploy-design.md`.
+  사용자와 brainstorming(architectural 경로)으로 진행했고 섹션별 승인을 받았다.
+  대상은 사용자의 기존 Oracle Cloud Ampere A1(aarch64, Oracle Linux 8, Docker,
+  Caddy). flight-friend를 종료하고 교체한다. 인가 서버는 Auth0 무료 티어(D-J).
+  **다음 단계는 `writing-plans`다. 아직 구현 태스크는 없다.**
+- **조사에서 나온 실증 사실 4건** (전부 1차 근거 확인, 스펙 §부록 A):
+  - **pgvector는 `trusted` 확장이 아니다** — `vector.control`에 `trusted = true`가 없다.
+    `CREATE EXTENSION vector`는 superuser를 요구하는데 `V1__enable_pgvector.sql`은
+    앱 계정으로 실행된다. **L2는 이걸 구조적으로 못 잡는다** — `PostgreSQLContainer`의
+    기본 계정이 컨테이너 안에서 superuser라 항상 통과한다. test/prod parity 구멍이다
+  - **Spring Security 7.1.1이 RFC 9728을 내장하고 있다** — `OAuth2ProtectedResourceMetadataFilter`,
+    `ProtectedResourceMetadataConfigurer` DSL, `BearerTokenAuthenticationEntryPoint`의
+    `resource_metadata` 문자열을 jar에서 직접 확인했다. 디스커버리 엔드포인트를
+    손으로 만들 필요가 없다
+  - **의존성 잠금이 없다** — lockfile·verification-metadata·`dependencyLocking` 전부 부재.
+    그래서 박스에서 재빌드하면 CI가 검증한 바이트와 갈라질 수 있다(D-H의 근거)
+  - **Claude는 OAuth 요청에 `resource`만 보내고 `audience`를 보내지 않는다** —
+    Auth0는 `audience` 없이는 opaque 토큰을 발급하므로 `NimbusJwtDecoder`가 파싱하지
+    못한다. 테넌트 Default Audience 설정이 필요하다. 배포 1순위 함정
+- **아직 실증되지 않은 판단 (D-M)** — `RequiredSettings.Validation`(`@Profile("production")`)은
+  중복 방어로 보인다. `SecurityConfig.jwtDecoder`가 싱글턴 빈이라 기동 시
+  `requireComplete()`가 동기 호출되므로 프로파일과 무관하게 실패해야 한다.
+  **코드 읽기에 근거한 추론이며 실행으로 확인하지 않았다.** 스펙 §12-4가 확인 또는 반증한다
 
 ### 다음 할 일
 
-1. T10~T13은 같은 브랜치의 PR #11로 전달한다: https://github.com/JunYupK/OverMind/pull/11
-   다음 구현 태스크는 T14이며 사용자 요청 시 착수한다. PR 병합은 별도 요청 전까지 수행하지 않는다.
-2. 운영 설정은 `OVERMIND_OIDC_ISSUER`, `OVERMIND_OIDC_AUDIENCE`,
+1. **`writing-plans`로 배포 구현 계획을 만든다.** 스펙을 사용자가 리뷰한 뒤에 시작한다
+2. **구현 전에 채워야 할 미확정 값** (스펙 §부록 B): `nproc`, `free -m`,
+   `docker compose version`, 도메인. 앞의 셋은 `mem_limit`과 JVM 힙을,
+   도메인은 Caddyfile·`resource`·Auth0 콜백을 정한다
+3. **`deploy/`와 `Dockerfile`을 감시 경로에 추가해야 한다** — `AGENTS.md` 규칙 3,
+   `40-guardrails.md`, `LogUpdatedGuardTest` 세 곳 전부.
+   `WatchedPathSyncGuardTest`가 대조하므로 한 곳만 고치면 CI가 막는다
+4. **코드 격차 3건** (스펙 §7.2): `anyRequest().denyAll()`이 `/.well-known/**`를 삼킴(G-1),
+   `McpHttpErrors.unauthenticated()`가 `WWW-Authenticate`를 덮어써 `resource_metadata`
+   파라미터를 지움(G-2 — 실질적 차단 지점), `protectedResourceMetadata(...)` 미활성(G-3)
+5. **B-1·B-2·B-3 결정** — 기한이 "M0 완료 전"이다. 실사용 경험이 근거가 되므로
+   배포 후에 판단한다
+6. 운영 설정은 `OVERMIND_OIDC_ISSUER`, `OVERMIND_OIDC_AUDIENCE`,
    `OVERMIND_ALLOWED_SUBJECT`, `OVERMIND_CURSOR_SECRET` 모두 필요하다.
-   issuer는 HTTPS, HMAC 키는 UTF-8 32바이트 이상이다. 운영 기본 키는 없다.
-   production에서는 필수 값 누락 시 기동에 실패한다. discovery/JWKS는 첫 JWT 검증으로
-   미루며, 외부 issuer와 원격 HTTPS 스모크는 T14에서 확인한다.
-3. T13 테스트는 `src/test/java/com/overmind/support/SignedJwtFixture.java`의 실제 RSA
-   서명 픽스처를 재사용한다. 토큰 검증 실패는 고정 401, scope 부족은 고정 403이다.
-   T11 private 콜백의 self-invocation을 피하려고 security chain 안의 `McpScopeFilter`가
-   SDK dispatch 전에 scope를 검사한다. T11의 permit-all 테스트 설정은 T12 검증에 쓰지 않는다.
-4. **MCP 기동/변환 주의:** protocol `streamable`을 명시해야 한다. 직접 등록한 도구는
+   issuer는 HTTPS 절대 URI, HMAC 키는 UTF-8 32바이트 이상이다. 운영 기본 키는 없다
+7. **MCP 기동/변환 주의:** protocol `streamable`을 명시해야 한다. 직접 등록한 도구는
    `validateToolInputs(false)`에 따라 DTO/유스케이스가 입력 검증을 책임진다.
    customizer는 servlet 웹 환경에서만 생성하고 framework customizer에 먼저 위임한다.
-   MCP 매퍼의 map-content inclusion `ALWAYS`를 유지해야 명시적인 null이 사라지지 않는다.
+   MCP 매퍼의 map-content inclusion `ALWAYS`를 유지해야 명시적인 null이 사라지지 않는다
 
 ### 확정된 결정
 
@@ -113,11 +123,17 @@
   실 LLM L3가 없다고 못 박았고 §11은 LLM extraction을 범위 밖으로 뒀다. **M0에는 LLM을
   부를 곳이 아예 없어 묶을 자리가 없다.** 억지로 묶으면 스펙과 충돌한다
 - `OVERMIND_LLM_API_KEY` 시크릿 미등록 — 실 L3 실행 전에 필요하다
-- **원격 브랜치 3종 미삭제 — 이 환경에서 지울 수 없다.** `feat/harness`,
-  `feat/vendor-skills`, `feat/widen-log-guard` 전부 `--cherry-pick`으로 master에 대응
-  커밋이 있어 삭제해도 잃는 것이 없다. 그런데 `git push --delete`가 **403**이고
-  GitHub MCP에는 브랜치 삭제 도구가 없다. 로컬에서
-  `git push origin --delete <브랜치>`로 지워야 한다
+- **원격 브랜치 3종 미삭제 — 이 환경에서 지울 수 없다.** `codex/m0-t2-t3`(팁이 T5),
+  `feat/m0`(팁이 T1), `claude/overmind-handover-8njuet`(PR #5 시절 이력) 셋이다.
+  전부 M0 태스크가 병합된 지금 master보다 뒤처져 있을 뿐이고, 내용은 이후 PR로
+  master에 들어갔다. `claude/overmind-handover-8njuet`은 PR #5(`f902b1d`)로 squash
+  병합됐고, 이 세션에서 파일별로 대조해 브랜치가 소유한 두 테스트 파일과
+  `40-guardrails.md`가 master와 완전히 동일함을 확인했다.
+  **판정 근거는 PR 병합 기록이지 `--cherry-pick`이 아니다** — squash 병합에서
+  `--cherry-pick`은 거짓 음성을 낸다(이전 세션에서 실제로 겪었다).
+  `git push --delete`가 이 컨테이너에서 **403**이고 GitHub MCP에도 브랜치 삭제 도구가
+  없으므로, 로컬에서
+  `git push origin --delete codex/m0-t2-t3 feat/m0 claude/overmind-handover-8njuet`로 지운다
 
 ### 막힌 것
 
@@ -126,6 +142,45 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-04 · Claude Code (원격 세션) · 배포 설계 brainstorming · claude/deploy-design
+
+- **한 일:** `docs/superpowers/specs/2026-09-04-overmind-deploy-design.md`를 썼다.
+  brainstorming 스킬의 architectural 경로를 따랐다 — 컨텍스트 조사 → 질문 3라운드 →
+  접근안 3개와 권고 → 섹션별 설계와 승인 → 스펙 작성. 각 단계에서 사용자 승인을 받았다.
+  플러그인 `superpowers:brainstorming`이 이 컨테이너에 없어 `.claude/skills/` 복사본을 썼다
+  (CLAUDE.md가 말한 "플러그인이 없는 도구를 위한" 경우에 해당).
+- **사용자가 결정한 것:** Auth0 무료 티어(안 1) · 단일 compose · 도메인은 placeholder.
+  Claude Chat과 ChatGPT 웹이 1순위 클라이언트이므로 DCR을 지원하는 관리형 AS가 필요했다.
+- **조사에서 나온 것 — 전부 1차 근거로 확인했고, 셋은 "게이트가 통과하는데 아무것도
+  검사하지 않는" 이 레포의 단골 문제와 같은 형태다:**
+  - **pgvector는 trusted 확장이 아니다.** `vector.control` 원본에 `trusted = true`가 없다.
+    `CREATE EXTENSION vector`가 superuser를 요구하는데 `V1__enable_pgvector.sql`은 앱
+    계정으로 돈다. **L2가 이걸 잡을 수 없는 이유가 구조적이다** — `PostgreSQLContainer`의
+    기본 계정이 컨테이너 안에서 superuser라 항상 초록이다. 배포 첫날 깨질 것이 확실했다
+  - **Spring Security 7.1.1이 RFC 9728을 이미 내장하고 있다.** jar를 풀어
+    `OAuth2ProtectedResourceMetadataFilter`의 `"%/.well-known/oauth-protected-resource"`,
+    `ProtectedResourceMetadataConfigurer` DSL, `BearerTokenAuthenticationEntryPoint`의
+    `resource_metadata` 문자열을 직접 봤다. **처음에 "디스커버리 엔드포인트가 없는 게
+    핵심 미결"이라고 사용자에게 말했는데 틀렸다** — 이미 클래스패스에 있었다. 정정했다
+  - **의존성 잠금이 전혀 없다.** lockfile·verification-metadata·`dependencyLocking` 모두 부재.
+    그래서 박스에서 재빌드하면 CI가 검증한 바이트와 갈라질 수 있다 → D-H의 근거가 됐다
+  - **Claude는 `resource`만 보내고 `audience`를 보내지 않는다.** Auth0는 그러면 opaque
+    토큰을 발급하고 `NimbusJwtDecoder`가 파싱하지 못한다. 배포 1순위 함정으로 등재
+- **내가 스스로 잡은 오류 2건 (사용자 질문 덕에 드러났다):**
+  - 섹션 2에서 "박스에서 컴파일하지 말자"고 해놓고 compose에 `build: .`을 썼다.
+    정확히 반대되는 설정이다. CI → GHCR → pull로 고쳤다
+  - "ARM 크로스 빌드 문제가 아예 없다"는 절반만 맞았다. jar는 중립이지만 **이미지
+    베이스 레이어는 아키텍처별이다.** `platforms: linux/amd64,linux/arm64`로 고쳤고,
+    Dockerfile에서 `RUN`을 없애 QEMU 없이 멀티아치가 되게 했다
+- **아직 실증하지 않은 판단 (D-M):** `RequiredSettings.Validation`(`@Profile("production")`)이
+  중복 방어로 보인다 — `SecurityConfig.jwtDecoder`가 싱글턴이라 기동 시
+  `requireComplete()`가 동기 호출되기 때문이다. **코드 읽기에 근거한 추론이고 실행으로
+  확인하지 않았다.** 스펙 §12-4를 결과를 모르는 검사로 남겨 확인/반증하게 했다
+- **검증:** 이 세션은 문서만 추가했다. 이 컨테이너에는 Docker가 없어 L2를 돌릴 수 없고
+  gitleaks도 없다. **게이트 판정은 CI가 한다** — 여기서 "통과했다"고 말할 근거가 없다.
+  스펙 본문에 고엔트로피 문자열이 없다는 것만 직접 grep으로 확인했다(C-9, PR #5 사고 재발 방지)
+- **다음:** 사용자가 스펙을 리뷰한 뒤 `writing-plans`. 구현 태스크는 아직 없다
 
 ### 2026-09-03 · Claude Code (원격 세션) · Task 14 acceptance·스모크 · claude/m0-t14
 

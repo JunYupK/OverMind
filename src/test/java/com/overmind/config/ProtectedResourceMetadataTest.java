@@ -68,6 +68,39 @@ class ProtectedResourceMetadataTest {
         });
     }
 
+    @Test
+    void an_unauthenticated_call_points_the_client_at_the_metadata_document() {
+        runner.run(context -> {
+            var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+
+            var response = mvc.perform(post("/mcp").servletPath("/mcp")
+                    .contentType(MediaType.APPLICATION_JSON).content(RPC))
+                    .andReturn().getResponse();
+
+            assertThat(response.getStatus()).isEqualTo(401);
+            assertThat(response.getHeader("WWW-Authenticate"))
+                    .as("이 파라미터가 없으면 Claude 웹은 어디서 로그인해야 하는지 알 수 없다")
+                    .contains("resource_metadata=")
+                    .contains("/.well-known/oauth-protected-resource/mcp");
+        });
+    }
+
+    @Test
+    void the_challenge_header_leaks_nothing_about_why_authentication_failed() {
+        runner.run(context -> {
+            var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+
+            var response = mvc.perform(post("/mcp").servletPath("/mcp")
+                    .header("Authorization", "Bearer not-a-real-token")
+                    .contentType(MediaType.APPLICATION_JSON).content(RPC))
+                    .andReturn().getResponse();
+
+            assertThat(response.getHeader("WWW-Authenticate"))
+                    .as("C-6 — 실패 사유도 토큰도 헤더에 싣지 않는다")
+                    .doesNotContain("error", "invalid_token", "not-a-real-token", "Jwt", "Exception");
+        });
+    }
+
     @Configuration(proxyBeanMethods = false)
     @EnableWebSecurity
     @EnableWebMvc

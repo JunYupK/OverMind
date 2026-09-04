@@ -70,7 +70,10 @@ class McpAuthorizationTest extends PostgresTestBase {
     void an_unauthenticated_call_is_rejected() throws Exception {
         HttpResponse<String> result = post("/mcp", null, null, recall());
         assertError(result, 401, "UNAUTHENTICATED");
-        assertThat(result.headers().firstValue("WWW-Authenticate")).contains("Bearer");
+        assertThat(result.headers().firstValue("WWW-Authenticate").orElseThrow())
+                .startsWith("Bearer ")
+                .contains("resource_metadata=\"")
+                .contains("/.well-known/oauth-protected-resource/mcp");
     }
 
     @ParameterizedTest

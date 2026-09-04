@@ -68,7 +68,7 @@ public class SecurityConfig {
                         .requestMatchers("/mcp").authenticated()
                         .anyRequest().denyAll())
                 .exceptionHandling(errors -> errors
-                        .authenticationEntryPoint((request, response, failure) -> McpHttpErrors.unauthenticated(response))
+                        .authenticationEntryPoint((request, response, failure) -> McpHttpErrors.unauthenticated(request, response))
                         .accessDeniedHandler((request, response, failure) -> McpHttpErrors.forbidden(response)))
                 .oauth2ResourceServer(resource -> resource
                         .bearerTokenResolver(tokens)
@@ -84,7 +84,7 @@ public class SecurityConfig {
                                         // 기본값이 true다. mTLS를 쓰지 않으므로 끈다 —
                                         // 하지 않는 보안 속성을 광고하면 안 된다.
                                         .tlsClientCertificateBoundAccessTokens(false)))
-                        .authenticationEntryPoint((request, response, failure) -> McpHttpErrors.unauthenticated(response))
+                        .authenticationEntryPoint((request, response, failure) -> McpHttpErrors.unauthenticated(request, response))
                         .accessDeniedHandler((request, response, failure) -> McpHttpErrors.forbidden(response)))
                 .addFilterAfter(new McpScopeFilter(mapper), AuthorizationFilter.class)
                 .build();

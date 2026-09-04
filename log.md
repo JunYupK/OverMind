@@ -67,6 +67,25 @@
   클레임으로 200을 반환하고 있었고, 테스트가 실패한 이유는 `authorization_servers`
   등 커스텀 클레임이 아직 없었기 때문이다. 그래서 `permitAll` 매처는 추가하지
   않았다(불필요한 노출면이었을 것). `ProtectedResourceMetadataTest`(L1) 2건 추가.
+- **플랜 T2를 구현했다 — `WWW-Authenticate`에 `resource_metadata`를 싣는다(G-2).**
+  `McpHttpErrors.unauthenticated`가 헤더를 `"Bearer"`로 통째로 덮어써 프레임워크가
+  붙였을 `resource_metadata` 파라미터를 지우고 있었다 — 디스커버리 체인의 실질적
+  차단 지점이었다. `ResourceIdentity.metadataUrl(HttpServletRequest)`를 새로 만들어
+  요청 URL로부터 RFC 9728 메타데이터 문서의 절대 URL을 만들고(프레임워크 필터가
+  `resource` 클레임을 만드는 것과 같은 규칙을 반대로 적용), `unauthenticated`가
+  이를 헤더에 싣게 했다. 헤더에는 URL만 있다 — `error`·`error_description`은
+  넣지 않는다(C-6). **브리프와 다르게** `ResourceIdentity`는 `com.overmind.config`가
+  아니라 `com.overmind.adapter.in.mcp`(McpHttpErrors와 같은 패키지)에 뒀다 —
+  `config`를 임포트하는 어댑터가 이 저장소에 하나도 없어, 브리프대로 하면
+  `config ↔ adapter.in.mcp` 순환이 생겼을 것이다. `ProtectedResourceMetadataTest`(L1)
+  2건 추가(총 4건) — 파라미터 존재 확인 + 실패 사유 비노출 회귀 방지.
+  `McpAuthorizationTest.an_unauthenticated_call_is_rejected`(L2)의 기존 단언을
+  `"Bearer"` 존재만 보던 것에서 `resource_metadata=` + 메타데이터 경로까지 보도록
+  강화했다. **썩힘 실험:** 헤더 줄을 `"Bearer"`로 되돌리자 L1 신규 테스트가 정확히
+  예상대로 실패했다(`resource_metadata=`를 못 찾음). **L2는 이 환경에 Docker가 없어
+  실행해 확인하지 못했다** — 되돌린 헤더로는 강화된 문자열 단언이 정적으로도
+  실패할 수밖에 없다(`"Bearer"`가 `"resource_metadata=\""`를 포함할 수 없음),
+  하지만 이는 코드를 읽고 판단한 것이지 실행으로 확인한 것이 아니다.
 
 ### 다음 할 일
 
@@ -78,9 +97,11 @@
 3. **`deploy/`와 `Dockerfile`을 감시 경로에 추가해야 한다** — `AGENTS.md` 규칙 3,
    `40-guardrails.md`, `LogUpdatedGuardTest` 세 곳 전부.
    `WatchedPathSyncGuardTest`가 대조하므로 한 곳만 고치면 CI가 막는다
-4. **코드 격차 3건** (스펙 §7.2): `anyRequest().denyAll()`이 `/.well-known/**`를 삼킴(G-1),
-   `McpHttpErrors.unauthenticated()`가 `WWW-Authenticate`를 덮어써 `resource_metadata`
-   파라미터를 지움(G-2 — 실질적 차단 지점), `protectedResourceMetadata(...)` 미활성(G-3)
+4. **코드 격차 2건 남음** (스펙 §7.2). G-1(`denyAll`이 `/.well-known/**`를 삼킨다는 추정)은
+   Task 1 실측으로 반증됐고, G-3(`protectedResourceMetadata` 미활성)은 커밋 `a35fae0`으로
+   구현됐다. 남은 것: **G-2**(`McpHttpErrors.unauthenticated()`가 `WWW-Authenticate`를
+   덮어써 `resource_metadata` 파라미터를 지움 — 실질적 차단 지점, Task 2가 다룬다)와
+   **G-4**(`resource`가 요청 URL에서 나와 리버스 프록시 뒤에서 루프백을 광고함, Task 3)
 5. **B-1·B-2·B-3 결정** — 기한이 "M0 완료 전"이다. 실사용 경험이 근거가 되므로
    배포 후에 판단한다
 6. 운영 설정은 `OVERMIND_OIDC_ISSUER`, `OVERMIND_OIDC_AUDIENCE`,

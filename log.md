@@ -77,6 +77,29 @@
   넣었다 — 수치가 바뀌면 그 검사가 실패하며 알려 준다. 수치 조정은 결정 사항
 
 
+
+### 스펙 §10 Acceptance 대조표
+
+**"통과했다"가 아니라 "무엇이 그것을 확인하는가"다.** L2 항목은 이 원격 컨테이너에서
+실행되지 않았다 — CI가 판정한다.
+
+| AC | 무엇이 확인하는가 | 계층 |
+|---|---|---|
+| 1 서로 다른 MCP client가 같은 인증 사용자로 접속 | `CrossClientAcceptanceTest` — 서명 토큰을 실은 `McpSyncClient` **두 개**를 같은 endpoint에 붙인다 | L2 |
+| 2 A가 저장한 USER를 B가 recall | `…what_one_client_stores_another_client_recalls` | L2 |
+| 3 A가 저장한 PROJECT를 B가 같은 key로 recall | `…a_project_stored_by_one_client_is_reachable_by_key_from_another` | L2 |
+| 4 PROJECT recall이 USER와 함께 최신순 | `…a_project_recall_returns_user_and_project_together_newest_first` | L2 |
+| 5 성공한 remember 직후 DB에 내구성 있게 존재 | `…a_stored_observation_is_durable_in_postgresql_right_after_the_call_returns` — 도구 응답의 `observation_id`로 **JdbcTemplate이 직접 행을 센다** | L2 |
+| 6 동일 idempotency key 재시도가 중복을 만들지 않음 | `…a_retry_with_the_same_idempotency_key_does_not_duplicate` — 두 클라이언트가 같은 키로 부르고 DB 행 수까지 센다 | L2 |
+| 7 일반 처리 경로에 update/delete 없음 | **`ObservationPortShapeTest`** — 포트의 메서드 표면을 정확히 못 박고, 변이 어휘도 따로 막는다 | L1 |
+| 8 cursor로 중복 없이 순회 | `…a_cursor_walks_every_observation_exactly_once_across_clients` (페이지마다 클라이언트를 번갈아 쓴다) + `KeysetPaginationTest` | L2 |
+| 9 민감 값이 로그에 없음 | `LogHygieneTest` (T13) | L2 |
+| 10 인증·권한·필수 설정 fail-closed | `RequiredSettingsTest` (L1) + `McpAuthorizationTest` (L2) | L1+L2 |
+
+**자동 테스트가 대신할 수 없는 것은 `docs/harness/70-m0-smoke.md`의 표에 있다** —
+실제 원격 MCP 클라이언트, 실제 OIDC 발급자, 실제 HTTPS 종단, 애플리케이션 포트 비노출.
+**그 표는 아직 비어 있다. 비어 있는 칸은 "안 해봤다"는 뜻이다.**
+
 ### 이월된 결함 — 닫히지 않았고 각각 이유가 있다
 
 - `@Nested` 내부 클래스의 `@SpringBootTest`는 계층 게이트를 여전히 우회한다
@@ -103,6 +126,32 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-03 · Claude Code (원격 세션) · Task 14 acceptance·스모크 · claude/m0-t14
+
+- **한 일:** 스펙 §10의 10개 acceptance criteria 각각에 증거를 붙였다.
+  - `CrossClientAcceptanceTest` (L2) — **플랜보다 강하게 갔다.** 플랜은
+    `webEnvironment = NONE`으로 유스케이스를 직접 부르는 형태였는데, AC 1~4는 클라이언트에
+    관한 조항이지 유스케이스에 관한 조항이 아니다. T11·T12가 만든 하네스 덕에 **서명 토큰을
+    실은 `McpSyncClient` 두 개**를 실제 Streamable HTTP endpoint에 붙일 수 있어 그렇게 했다
+  - `ObservationPortShapeTest` (L1) — AC 7을 게이트로 만들었다
+  - `docs/harness/70-m0-smoke.md` — 자동 테스트가 대신할 수 없는 것만 남긴 수동 절차
+  - `AGENTS.md` 라우팅에 스모크 문서 추가 (64/120줄)
+- **결과:** L1 150건 → **154건**. `guardrails` 11건, gitleaks 통과.
+  **`CrossClientAcceptanceTest`는 컴파일만 됐고 실행되지 않았다** — Docker가 없다. CI가 판정한다
+- **함정:** **썩힘 실험을 처음에 잘못 했다.** 포트에 메서드를 추가해 검사가 실패하는지 보려
+  했는데, 인터페이스에 메서드를 더하면 구현체가 안 맞아 **컴파일 단계에서 죽는다.** BUILD가
+  FAILED이길래 "검사가 잡았다"고 볼 뻔했다 — 잡은 건 컴파일러다. `default` 메서드로 다시
+  해서 구현체가 그대로 컴파일되게 한 뒤에야 진짜 검사가 발화하는 것을 봤다.
+  **실패의 원인을 확인하지 않은 실패는 증거가 아니다.**
+  둘째: 그렇게 다시 하니 **두 층이 서로를 덮는 것**이 드러났다. `deleteById`는 표면 검사와
+  어휘 검사 둘 다 잡고, `evictStale`(변이 어휘 없음)은 표면 검사만, 허용 목록까지 늘려
+  우회하면 어휘 검사만 잡는다. 한 층만 뒀으면 각각 절반은 새어 나갔다.
+  셋째: **베이스라인이 또 429로 빨갰다.** Maven Central 레이트 리밋이고 백오프로 풀렸다.
+  Task 6~7 때와 같은 함정이라 이번엔 바로 알아봤다 — 기록해 둔 값이 나왔다
+- **다음:** M0 구현은 끝났다. 남은 것은 **수동 스모크**(`70-m0-smoke.md` 표 채우기)와
+  M1(골든셋 50문항 + raw RAG 베이스라인). B-1·B-2·B-3은 M0 완료 전에 결정해야 한다
+
 ### 2026-09-04 10:05 · Codex · T13 커밋·푸시·PR 갱신 · 이 커밋
 - **한 일:** 사용자 요청에 따라 T13 설정·로그 캡처 테스트·공용 JWT 픽스처 이동과 동반 문서를 한 커밋으로 묶고 기존 origin 브랜치 및 PR #11로 전달한다. PR 제목·본문은 T10~T13의 최종 구현 범위에 맞춘다.
 - **결과:** 커밋 전 verify·guardrails 통과 — L1 150/L2 99/guardrails 11, 실패·오류·스킵 0. 기존 누출 삽입 실험은 실패를 확인한 뒤 복원됐고 제품 변경은 그 이후 없다. 스펙·diff 자체 대조 완료, 사용자 결정에 따라 자동 교차 리뷰는 생략한다. 로컬 gitleaks는 미설치이며 CI가 시크릿 검사를 수행한다.

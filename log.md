@@ -86,6 +86,33 @@
   실행해 확인하지 못했다** — 되돌린 헤더로는 강화된 문자열 단언이 정적으로도
   실패할 수밖에 없다(`"Bearer"`가 `"resource_metadata=\""`를 포함할 수 없음),
   하지만 이는 코드를 읽고 판단한 것이지 실행으로 확인한 것이 아니다.
+- **플랜 T3을 구현했다 — 리버스 프록시 뒤에서 공개 URL을 올바르게 만든다(G-4).**
+  `ResourceIdentity.metadataUrl`과 프레임워크의 `resolveResourceIdentifier`
+  둘 다 `UrlUtils.buildFullRequestUrl(request)`를 쓴다. Caddy 뒤에서 앱은
+  `http://127.0.0.1:8080`을 보므로, 그대로 두면 메타데이터의 `resource`
+  클레임과 401 헤더의 `resource_metadata`가 모두 루프백 주소를 평문으로
+  광고해 디스커버리가 통째로 깨진다. `application.yml`에 `server.
+  forward-headers-strategy: native`(Tomcat `RemoteIpValve`)와 `server.tomcat
+  .remoteip.internal-proxies`를 루프백 정규식으로 넣었다. FRAMEWORK
+  (`ForwardedHeaderFilter`)과 달리 NATIVE는 신뢰할 원격 주소를 좁힐 수 있다 —
+  아무나 보낸 `X-Forwarded-Host`를 반영하면 메타데이터를 오염시킬 수 있다.
+  **Step 2 실측:** 신규 테스트(`the_public_url_follows_what_the_container
+  _reports_not_a_hardcoded_host`)는 `application.yml` 변경 **전에 이미 PASS**했다
+  — `ResourceIdentity.metadataUrl`이 `HttpServletRequest`의 scheme/host/port를
+  그대로 읽고, `MockMvcRequestBuilders`가 그 값을 직접 세팅하기 때문에 이
+  테스트는 `application.yml`을 전혀 거치지 않는다. 브리프가 예견한 "이미
+  올바른 경우"였다 — 회귀 방지로 남기고 Step 3(설정 변경)만 별도로 진행했다.
+  `ProtectedResourceMetadataTest`(L1) 1건 추가(총 5건).
+  **썩힘 확인(Step 5)의 한계를 숨기지 않는다:** `internal-proxies`를 `.*`로
+  바꾸고 `./gradlew verify`를 돌려도 L1 5건은 그대로 PASS했다(`test` 태스크
+  총 159건, 실패 0) — **이것은 통과가 아니라 이 게이트의 사각지대다.**
+  `MockMvc`는 서블릿 컨테이너를 거치지 않아 `RemoteIpValve`가 아예 존재하지
+  않으므로, `internal-proxies`가 무엇이든 이 테스트는 구분하지 못한다.
+  신뢰 경계 자체는 어떤 L1 테스트로도 검증할 수 없다 — 배포 스모크(스펙 §12-5,
+  `70-m0-smoke.md`, Task 8이 추가)가 실측한다. 값은 루프백으로 되돌렸다.
+  이 한계를 "이월된 결함"에 등재했다. `integrationTest`(L2)는 이 환경에
+  Docker가 없어 `Testcontainers` 초기화 단계에서 실패한다 — 이번 변경과
+  무관한 기존 제약이다.
 
 ### 다음 할 일
 
@@ -97,11 +124,12 @@
 3. **`deploy/`와 `Dockerfile`을 감시 경로에 추가해야 한다** — `AGENTS.md` 규칙 3,
    `40-guardrails.md`, `LogUpdatedGuardTest` 세 곳 전부.
    `WatchedPathSyncGuardTest`가 대조하므로 한 곳만 고치면 CI가 막는다
-4. **코드 격차 1건 남음** (스펙 §7.2). G-1(`denyAll`이 `/.well-known/**`를 삼킨다는 추정)은
+4. **코드 격차 0건 남음** (스펙 §7.2). G-1(`denyAll`이 `/.well-known/**`를 삼킨다는 추정)은
    Task 1 실측으로 반증됐고, G-3(`protectedResourceMetadata` 미활성)은 커밋 `a35fae0`으로,
    G-2(`McpHttpErrors.unauthenticated()`가 `WWW-Authenticate`를 덮어써 `resource_metadata`
-   파라미터를 지움)는 Task 2로 각각 구현·해소됐다. 남은 것: **G-4**(`resource`가 요청
-   URL에서 나와 리버스 프록시 뒤에서 루프백을 광고함, Task 3)
+   파라미터를 지움)는 Task 2로, G-4(`resource`가 요청 URL에서 나와 리버스 프록시 뒤에서
+   루프백을 광고함)는 Task 3으로 각각 구현·해소됐다. 남은 것은 코드가 아니라
+   실배포·수동 스모크(스펙 §12)와 B-1~B-3 결정이다
 5. **B-1·B-2·B-3 결정** — 기한이 "M0 완료 전"이다. 실사용 경험이 근거가 되므로
    배포 후에 판단한다
 6. 운영 설정은 `OVERMIND_OIDC_ISSUER`, `OVERMIND_OIDC_AUDIENCE`,
@@ -161,6 +189,14 @@
 
 ### 이월된 결함 — 닫히지 않았고 각각 이유가 있다
 
+- **L1은 `internal-proxies`의 신뢰 경계를 검증하지 못한다(Task 3).**
+  `MockMvc`는 서블릿 컨테이너를 거치지 않아 Tomcat `RemoteIpValve`가 아예
+  존재하지 않는다 — `internal-proxies`를 `.*`(전부 신뢰)로 바꿔도 관련 L1
+  테스트는 그대로 PASS한다(직접 확인함). `ResourceIdentity`가 요청이 말하는
+  대로 URL을 만든다는 성질만 고정할 수 있고, 그 요청이 신뢰할 만한 프록시에서만
+  왔는지는 배포 스모크(스펙 §12-5, `70-m0-smoke.md`)가 실측해야 한다. 밸브를
+  흉내 내는 테스트를 억지로 만들지 않기로 했다 — 통합 테스트가 검증 못 하는
+  범위를 가짜로 메우면 그 자체가 거짓 신호가 된다.
 - `@Nested` 내부 클래스의 `@SpringBootTest`는 계층 게이트를 여전히 우회한다
   (google-java-format으로는 도달할 수 없는 형태라 우선순위를 낮췄다)
 - `@Tag(상수)` 거짓 양성 — 안전한 방향으로 실패하므로 의도적으로 남겼다

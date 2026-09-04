@@ -101,6 +101,32 @@ class ProtectedResourceMetadataTest {
         });
     }
 
+    @Test
+    void the_public_url_follows_what_the_container_reports_not_a_hardcoded_host() {
+        runner.run(context -> {
+            var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+
+            var response = mvc.perform(post("/mcp").servletPath("/mcp")
+                    // scheme을 명시적으로 세운다. secure(true)는 request.isSecure()만 바꾸고
+                    // getScheme()은 "http"로 남는데, UrlUtils.buildFullRequestUrl은 scheme을 본다.
+                    .with(request -> {
+                        request.setScheme("https");
+                        request.setSecure(true);
+                        request.setServerName("overmind.example.test");
+                        request.setServerPort(443);
+                        return request;
+                    })
+                    .contentType(MediaType.APPLICATION_JSON).content(RPC))
+                    .andReturn().getResponse();
+
+            assertThat(response.getHeader("WWW-Authenticate"))
+                    .as("프록시가 반영된 scheme/host를 그대로 따라야 한다. "
+                            + "루프백 주소를 광고하면 클라이언트가 서버를 찾지 못한다")
+                    .contains("https://overmind.example.test" + METADATA)
+                    .doesNotContain("127.0.0.1", "http://");
+        });
+    }
+
     @Configuration(proxyBeanMethods = false)
     @EnableWebSecurity
     @EnableWebMvc

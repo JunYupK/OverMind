@@ -25,6 +25,21 @@ overmind:
     allowed-subject: ${OVERMIND_ALLOWED_SUBJECT:}
     cursor-secret: ${OVERMIND_CURSOR_SECRET:}
 
+server:
+  # 리버스 프록시 뒤에서 공개 URL(scheme·host·port)을 올바르게 만든다.
+  # 이 값이 없으면 RFC 9728 메타데이터가 resource: "http://127.0.0.1:8080/mcp"를
+  # 광고하고 MCP 디스커버리가 통째로 깨진다.
+  #
+  # NATIVE는 Tomcat RemoteIpValve를 쓴다. FRAMEWORK(ForwardedHeaderFilter)와 달리
+  # 신뢰할 원격 주소를 정규식으로 제한할 수 있다 — 아무 클라이언트나 보낸
+  # X-Forwarded-Host를 반영하면 메타데이터를 오염시킬 수 있다.
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      # 앱은 127.0.0.1에만 바인딩되고 Caddy도 루프백에서 붙는다.
+      # 그 밖의 출처가 보낸 forwarded 헤더는 무시된다.
+      internal-proxies: "127\\.0\\.0\\.1|0:0:0:0:0:0:0:1|::1"
+
 logging:
   level:
     # Tomcat DEBUG dumps complete incoming bytes, including Authorization and memory payloads.

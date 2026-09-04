@@ -7,41 +7,45 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — Task 0~9 병합 완료, Task 10 커밋 완료, Task 11 구현·검증 완료(미커밋)**
-- **최근 갱신:** 2026-09-03 · Codex (Task 11 완료)
+- **마일스톤:** **M0 — Task 0~9 병합 완료, Task 10~12 구현·커밋 완료**
+- **최근 갱신:** 2026-09-04 · Codex (Docker 복구 확인, T11·T12 검증 및 커밋)
 - **브랜치:** `codex/m0-t10-t14` (`origin/master`의 `fc7abdd`에서 시작)
-- **verify:** L1 114건 / L2 72건 통과(로컬 Docker) · **guardrails:** 11건 통과.
-  실패·오류·스킵 0건. gitleaks 미설치로 로컬 시크릿 스캔은 생략됐다.
+- **현재 검증:** 전체 `verify guardrails` 통과. L1 150 / L2 92 / guardrails 11건,
+  실패·오류·스킵 0건. L2에 T12 인증·권한 HTTP/DB 20건 포함. 로컬 gitleaks는
+  미설치로 생략됐으며 실제 외부 OIDC·원격 HTTPS 검증은 이번 게이트 범위가 아니다.
 
 ### 진행 중
 
-- **Task 10은 `360024b`로 커밋했다. T11은 같은 브랜치에서 구현·검증했고 미커밋이다.**
-  `remember_memory`·`recall_memory`를 실제 유스케이스·DB와 연결했다. Streamable HTTP로
-  저장·멱등 재시도·페이지 조회·응답 필드·오류 코드와 원문 비노출을 검증했다.
-  T12~T14는 아직 착수하지 않았다.
+- **Task 10은 `360024b`, Task 11은 `6aa56d4`, Task 12는 이 로그를 포함한 커밋이다.**
+  T11은 `remember_memory`·`recall_memory`의 실제 유스케이스/DB 연결, 입력 검증,
+  응답 계약과 안전한 오류 매핑을 구현했다. 별도로 보존한 staging 스냅샷에서
+  L1 114 / L2 72 / guardrails 11건을 다시 통과한 뒤 커밋했다.
+  T12는 필수 설정 검증, JWT 서명·issuer·audience·subject·시간 검증과 도구별 scope를
+  구현했다. 유효·변형 토큰을 실제 HTTP/MCP로 보내 저장 부작용과 매 요청 권한 검사를
+  확인했다. 두 태스크는 별도 커밋이며 T13~T14는 아직 착수하지 않았다.
 - **Task 8은 PR #9(`a21b6ac`), Task 9는 PR #10(`fc7abdd`)으로 master에 병합됐다.**
-  T9가 분리한 AR-3B는 실제 SDK 침투 프로브를 잡았고, 프로브 제거 후 다시 통과했다.
   - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
   - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — Task 0~14
-  - `build.gradle.kts`가 Spring Boot 4.1.1 / Hibernate 7.4.5.Final / jakarta.persistence
-    3.2.0 / Flyway 12.4.0 / Spring Framework 7.0.9 위에서 돈다. 자세한 내용은
-    `.superpowers/sdd/2026-09-02-overmind-m0/task-0-report.md`
+  - Spring Boot 4.1.1 / Hibernate 7.4.5.Final / jakarta.persistence 3.2.0 /
+    Flyway 12.4.0 / Spring Framework 7.0.9. 상세는 task-0-report.md와 결정 문서 참조.
 
 ### 다음 할 일
 
-1. 사용자 요청의 T10 커밋과 T11 구현을 완료했다. T11 코드·테스트·플랜·이 로그를
-   함께 보존하고 다음 전달 요청에서 커밋한다. 푸시·PR 생성은 아직 하지 않았다.
-2. 다음 구현 태스크는 T12(OAuth 정책·필수 설정 검증)다. T11의 커서 키는
-   `OVERMIND_CURSOR_SECRET`에서 주입하며 UTF-8 32바이트 이상이 필요하다. 운영 기본 키는
-   없고 테스트에만 고정 키를 제공한다. 로그 위생은 T13, 원격 스모크는 T14에서 이어진다.
-3. **기동 설정 주의:** jar 메타데이터의 protocol 기본값은 `streamable`이지만 실제
-   Streamable 조건은 `matchIfMissing=false`, SSE 조건은 `true`다. 명시한 키를 지우면
-   SSE가 활성화된다. 기본 `type=sync`, `stdio=false`, endpoint `/mcp`는 유지한다.
-4. **MCP 입력 변환 주의:** 직접 등록한 `SyncToolSpecification`과 DTO 검증을 사용한다.
-   SDK 선행 검증은 `validateToolInputs(false)`로 끄고, servlet customizer에 먼저 위임한다.
-   해당 빈은 웹 환경에서만 생성한다. MCP 전용 JSON 매퍼는 map-content inclusion을
-   `ALWAYS`로 유지해야 명시적인 null이 변환 중 사라지지 않는다. 이후 도구도 자체 검증이
-   필수다. T11 HTTP 테스트의 인증 허용 설정은 테스트 코드에만 있으며 T12를 대신하지 않는다.
+1. 다음 구현 태스크는 T13 로그 위생이다. 사용자가 착수를 요청하면 이어간다.
+   이번 요청은 T11·T12 검증 후 커밋까지이며 푸시·PR은 수행하지 않았다.
+2. 운영 설정은 `OVERMIND_OIDC_ISSUER`, `OVERMIND_OIDC_AUDIENCE`,
+   `OVERMIND_ALLOWED_SUBJECT`, `OVERMIND_CURSOR_SECRET` 모두 필요하다.
+   issuer는 HTTPS, HMAC 키는 UTF-8 32바이트 이상이다. 운영 기본 키는 없다.
+   production에서는 필수 값 누락 시 기동에 실패한다. discovery/JWKS는 첫 JWT 검증으로
+   미루며, 외부 issuer와 원격 HTTPS 스모크는 T14에서 확인한다.
+3. T13 테스트는 `src/test/java/com/overmind/config/SignedJwtFixture.java`의 실제 RSA
+   서명 픽스처를 재사용한다. 토큰 검증 실패는 고정 401, scope 부족은 고정 403이다.
+   T11 private 콜백의 self-invocation을 피하려고 security chain 안의 `McpScopeFilter`가
+   SDK dispatch 전에 scope를 검사한다. T11의 permit-all 테스트 설정은 T12 검증에 쓰지 않는다.
+4. **MCP 기동/변환 주의:** protocol `streamable`을 명시해야 한다. 직접 등록한 도구는
+   `validateToolInputs(false)`에 따라 DTO/유스케이스가 입력 검증을 책임진다.
+   customizer는 servlet 웹 환경에서만 생성하고 framework customizer에 먼저 위임한다.
+   MCP 매퍼의 map-content inclusion `ALWAYS`를 유지해야 명시적인 null이 사라지지 않는다.
 
 ### 확정된 결정
 
@@ -88,11 +92,40 @@
 
 ### 막힌 것
 
-- 없음. 교차 리뷰는 사용자 요청이 있을 때만 수행한다.
+- 없음. Docker 엔진 기동과 GET /_ping 200 OK를 확인했고 PostgreSQL 통합 테스트도 통과했다.
 
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+### 2026-09-04 09:15 · Codex · T11·T12 검증 및 커밋 · T11 6aa56d4 / T12 이 커밋
+- **한 일:** Docker Desktop을 기동하고 엔진 준비 후 GET /_ping 200 OK를 확인했다. 보존한 T11 index 스냅샷이 커밋 대상 13개 파일과 일치함을 확인하고 독립 검증 뒤 커밋했다. 이어서 T12 production profile의 실제 서명 JWT·MCP·PostgreSQL 경로를 검증하고 별도 커밋으로 마무리했다.
+- **결과:** T11 verify·guardrails L1 114/L2 72/guardrails 11, T12 전체 게이트 L1 150/L2 92/guardrails 11 통과. 모두 실패·오류·스킵 0건. T12 인증·권한 L2는 20건이다. 로컬 gitleaks는 미설치로 생략. 스펙·diff 자체 대조 실시, 교차 리뷰는 사용자 결정대로 미실시.
+- **함정:** Docker 기동 직후에는 no connected NIC/HTTP 500이 나왔으나 준비 후 정상 응답했다. 즉시 재시작하지 말고 기동 상태를 확인한다. 기존 acpid 오류의 근본 원인은 확정하지 않았다. T12 서명 픽스처는 운영 validator 사슬을 공유하며 인증 SecurityContext를 직접 주입하지 않는다. 기존 audience/sub 제거 실험은 각각 관련 2건 실패 후 복원된 상태다.
+- **다음:** 사용자 요청 시 T13 로그 위생. T14 원격 HTTPS·외부 issuer 스모크는 별도 검증이 필요하다. 이번에는 푸시·PR·병합을 수행하지 않았다.
+### 2026-09-03 21:37 · Codex · T11 커밋/T12 검증 재개 · 미커밋
+- **한 일:** 사용자 WSL 서비스 재시작 후 Docker 연결과 backend 로그를 확인했다. 중첩된 종료 요청을 완료하고 Docker 전용 런타임을 다시 띄웠으나 acpid OCI 오류가 재현됐다. staging한 T11 13개 파일은 그대로 보존했고, ignored 디렉터리에 해당 index의 별도 스냅샷을 만들었다.
+- **결과:** Docker 미복구로 전체 verify 미실행 / 코드 리뷰 추가 미실시. 기존 T12 L1 150·guardrails 11 통과 기록은 유지하며 L2와 T11 커밋은 대기한다.
+- **함정:** Docker 버전 응답만으로 엔진 정상 여부를 판단할 수 없다. 초기 GET /_ping은 무응답이었고 이후 엔진은 acpid 생성 실패로 종료했다. WSL 재시작만으로 해결되지 않았으며 반복 종료 명령을 중첩해서 실행하지 않는다. 구버전 Desktop과 현재 WSL의 호환성은 아직 원인으로 확정하지 않았다.
+- **다음:** PC 재부팅 후 Docker API를 확인하고 두 게이트를 실행한다. 이미 staging한 T11만 커밋하고 T12 HTTP/DB 검증을 마무리한다. T13·T14·푸시·PR은 진행하지 않는다.
+
+### 2026-09-03 18:50 · Codex · M0 Task 11 커밋 준비 / Task 12 · 미커밋
+- **한 일:** 요청받은 T11 변경 13개 파일을 staging으로 분리했다. 커밋 전 L2가 Docker
+  ping에서 멈춰 커밋은 보류하고 T12 설정·JWT·도구 scope 필터 및 서명 토큰 테스트를 작성했다.
+  설정은 별도 구현 에이전트가 담당했고 JWT·HTTP 경계·통합 테스트는 부모가 구현·대조했다.
+- **결과:** T12 포함 전체 L1 150건·guardrails 11건 통과, 실패·오류·스킵 0건.
+  audience 제거 시 audience/누락 audience 2건, subject 제거 시 subject/누락 subject 2건이
+  실패하는 것을 확인한 뒤 원복했다. L2는 환경 문제로 검증 전이며 `verify` 통과로 보고하지 않는다.
+  교차 리뷰는 사용자 결정에 따라 하지 않았고 로컬 gitleaks는 미설치로 생략됐다.
+- **함정:** 플랜의 private 콜백 `@PreAuthorize`는 self-invocation을 보호하지 못한다.
+  인증·경로 검사 뒤 SDK dispatch 전에 scope를 검사하고 원래 body를 재전달하도록 보완했다.
+  JWT validator 사슬에 넣은 subject 거절은 401로 고정했고 scope 거절은 403이다.
+  JWT 테스트가 검증 사슬을 복제하지 않도록 운영 메서드를 공유한다.
+  Docker는 HEAD ping/version에는 응답했지만 GET ping이 멈췄다. 실행 컨테이너가 없는 것을
+  확인하고 Desktop 재기동을 시도했다. 이후 no connected NIC/WSL 조회 멈춤을 확인했으며,
+  WSL 서비스 재시작은 Windows 관리자 권한 부족으로 실패했다. 데이터·배포판은 삭제하지 않았다.
+- **다음:** 사용자에게 요청한 관리자 WSL/Docker 복구 후 전체 게이트를 다시 실행한다.
+  T11 staged snapshot과 T12 working tree를 섞지 말고 T11 커밋부터 완료한다.
+  T12 HTTP 권한·세션 재검증·실제 DB 저장 검증을 통과시킨 뒤 T13 착수를 판단한다.
 
 ### 2026-09-03 18:11 · Codex · M0 Task 11 · 미커밋
 - **한 일:** 요청받은 T10을 `360024b`로 커밋하고 같은 브랜치에서 T11을 구현했다.

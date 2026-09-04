@@ -20,4 +20,7 @@ spring:
 
 overmind:
   security:
+    issuer: ${OVERMIND_OIDC_ISSUER:}
+    audience: ${OVERMIND_OIDC_AUDIENCE:}
+    allowed-subject: ${OVERMIND_ALLOWED_SUBJECT:}
     cursor-secret: ${OVERMIND_CURSOR_SECRET:}

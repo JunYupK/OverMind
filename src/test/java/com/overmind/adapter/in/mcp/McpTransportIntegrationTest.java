@@ -37,6 +37,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
@@ -326,6 +327,7 @@ class McpTransportIntegrationTest extends PostgresTestBase {
     static class ProtocolTestSecurity {
         /** T11 isolates the MCP contract; real issuer/scope enforcement is tested in T12. */
         @Bean
+        @Order(0)
         SecurityFilterChain protocolTestChain(HttpSecurity http) throws Exception {
             return http.securityMatcher("/mcp", "/mcp/**")
                     .csrf(csrf -> csrf.disable())

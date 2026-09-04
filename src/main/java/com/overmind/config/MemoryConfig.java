@@ -8,12 +8,13 @@ import com.overmind.application.port.SubjectRepository;
 import com.overmind.application.port.TransactionBoundary;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /** Wires memory use cases, their shared time source, and the externally configured cursor key. */
 @Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(RequiredSettings.class)
 public class MemoryConfig {
 
     @Bean
@@ -22,8 +23,8 @@ public class MemoryConfig {
     }
 
     @Bean
-    HmacCursorCodec hmacCursorCodec(@Value("${overmind.security.cursor-secret}") String cursorSecret) {
-        return new HmacCursorCodec(cursorSecret.getBytes(StandardCharsets.UTF_8));
+    HmacCursorCodec hmacCursorCodec(RequiredSettings settings) {
+        return new HmacCursorCodec(settings.cursorSecret().getBytes(StandardCharsets.UTF_8));
     }
 
     @Bean

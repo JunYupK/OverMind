@@ -37,5 +37,8 @@ public abstract class PostgresTestBase {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add(
                 "overmind.security.cursor-secret", () -> "overmind-test-cursor-key-".repeat(2));
+        registry.add("overmind.security.issuer", () -> "https://issuer.example.com");
+        registry.add("overmind.security.audience", () -> "overmind");
+        registry.add("overmind.security.allowed-subject", () -> "subject-1");
     }
 }

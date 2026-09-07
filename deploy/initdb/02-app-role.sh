@@ -10,6 +10,8 @@
 # 스펙 §6.2: "앱 계정 하나를 쓴다. superuser가 아니다." POSTGRES_USER(db.env의
 # 부트스트랩 계정)와 이 역할은 반드시 다른 계정이어야 한다 — 같으면 앱이
 # superuser로 접속하게 되어 이 스크립트를 만든 이유 자체가 사라진다.
+# README·db.env.example·app.env.example의 경고는 산문일 뿐이라 아무것도
+# 막지 못한다 — 아래 가드가 이를 실제로 강제한다(exit 1로 초기화를 중단).
 #
 # **최초 1회성이다.** docker-entrypoint-initdb.d는 데이터 디렉터리가 비어
 # 있을 때만(즉 볼륨을 처음 만들 때만) 실행된다. overmind-pgdata는 external
@@ -34,6 +36,20 @@ set -Eeuo pipefail
 : "${POSTGRES_DB:?POSTGRES_DB가 db.env에 없습니다}"
 : "${OVERMIND_DB_USER:?OVERMIND_DB_USER가 db.env에 없습니다}"
 : "${OVERMIND_DB_PASSWORD:?OVERMIND_DB_PASSWORD가 db.env에 없습니다}"
+
+# 아래 SQL의 WHERE NOT EXISTS(idempotency 체크)는 두 이름이 같으면 "이미
+# 있다"고 보고 CREATE ROLE을 그냥 건너뛴다 — 에러가 안 난다. 그러면 이미
+# 존재하는 그 역할(=POSTGRES_USER=superuser)에 GRANT만 추가로 얹고 조용히
+# 성공한다. SQL의 idempotency 체크에 이 검사를 맡길 수 없는 이유가 이것이다
+# — 여기서 셸이 먼저, psql을 부르기 전에 끊어야 한다.
+if [ "$POSTGRES_USER" = "$OVERMIND_DB_USER" ]; then
+	echo "02-app-role.sh: POSTGRES_USER와 OVERMIND_DB_USER가 둘 다 '$POSTGRES_USER'로 같습니다." >&2
+	echo "02-app-role.sh: POSTGRES_USER는 initdb --username으로 만들어지는 클러스터 superuser입니다." >&2
+	echo "02-app-role.sh: 두 값이 같으면 앱이 superuser로 접속하게 되어 스펙 §6.2" >&2
+	echo "02-app-role.sh: (\"앱 계정 하나를 쓴다. superuser가 아니다\")를 어깁니다. db.env에서" >&2
+	echo "02-app-role.sh: OVERMIND_DB_USER를 POSTGRES_USER와 다른 이름으로 바꾸세요." >&2
+	exit 1
+fi
 
 # 헤레독 구분자를 따옴표로 감쌌다(<<-'EOSQL') — 셸이 안의 $를 전혀 건드리지
 # 않게 하려는 의도다. 값은 -v로만 psql에 전달되고, SQL 쪽에서는 :'role'

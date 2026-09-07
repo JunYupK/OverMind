@@ -9,24 +9,28 @@
 
 - **마일스톤:** **M0 — Task 0~14 전부 master 병합 완료.** 남은 것은 코드가 아니라
   실배포·수동 스모크·B-1~B-3 결정이다
-- **최근 갱신:** 2026-09-04 · Claude Code (원격 세션) — Task 5 리뷰 대응 2차:
-  `02-app-role.sh`가 role/password를 셸 문자열 접합 대신 psql 변수
-  (`format()`의 `%I`/`%L`)로 SQL에 넘기도록 고쳤다
+- **최근 갱신:** 2026-09-04 · Claude Code (원격 세션) — Task 5 리뷰 대응 3차:
+  `02-app-role.sh`에 `POSTGRES_USER`=`OVERMIND_DB_USER` 실행 가드 추가
+  (독립 리뷰는 승인, 이 항목은 그 리뷰가 별도로 찾은 silent-failure 경로)
 - **브랜치:** `claude/deploy-design` (`origin/master`의 `b0ebb3d`에서 시작)
 - **현재 검증:** 이 브랜치에서 T1~T5가 구현·커밋됐다. T5는 최초 구현이 리뷰에서
   Critical 2건(계정 모델 미추적, `.env` 덮어쓰기)으로, 1차 대응이 다시
-  Important 1건(SQL 문자열 접합 취약성)으로 반려됐다. 2차 대응까지 재검증한
-  것: `bash -n`(02-app-role.sh 문법), `grep -nE '^[A-Z_]+=.+'
+  Important 1건(SQL 문자열 접합 취약성)으로 반려됐다. **독립 리뷰가 구현
+  자체는 승인**했지만, `POSTGRES_USER`=`OVERMIND_DB_USER`로 두면 세 파일의
+  경고 산문을 무시해도 아무 계층도 에러를 내지 않고 앱이 조용히 superuser로
+  붙는 경로를 찾아 3차 수정을 요청했다. 3차까지 재검증한 것:
+  `bash -n`(02-app-role.sh 문법), `grep -nE '^[A-Z_]+=.+'
   deploy/*.env.example`(두 env 예시 전부 매치 0건), `./gradlew guardrails`
-  (`-PbaseRef=origin/master`, 11/11 PASS), 그리고 헤레독 확장 규칙만 떼어낸
-  스크립트로 "따옴표 없는 예전 형태는 작은따옴표·큰따옴표가 든 값에서
-  SQL 텍스트가 깨지고, 따옴표 있는 새 형태는 셸이 아예 건드리지 않는다"를
-  직접 실행해 보였다. **로컬에 gitleaks가 없어 `gitleaksScan`은 계속
+  (`-PbaseRef=origin/master`, 11/11 PASS), 그리고 새 가드를 **직접 실행해서**
+  같은 값이면 exit 1 + 안내 메시지, 다른 값이면 통과(psql 호출까지 도달)를
+  둘 다 실측으로 확인했다("가드를 본 적 없으면 가드가 아니다"는 이 브랜치의
+  기존 규율을 그대로 따름). **로컬에 gitleaks가 없어 `gitleaksScan`은 계속
   생략된다**("통과"가 아니라 "안 돌았다") — 값이 전부 비어 있음은 grep
   실측으로 대신했다. Docker가 없어 `docker build`·`docker compose config`·
   실제 기동·psql 자체의 파싱 결과는 실행하지 못했다 — 계정 분리·역할
-  GRANT·이번 quoting 수정이 실제 PostgreSQL 서버 앞에서도 그대로
-  작동하는지는 이 환경에서 실측 불가다. L2(`integrationTest`)는
+  GRANT·quoting 수정·이번 가드가 실제 PostgreSQL 서버 앞에서도 그대로
+  작동하는지는 이 환경에서 실측 불가다(가드 자체는 셸 로직이라 실행
+  확인했지만, `psql` 이후 단계는 여전히 미확인). L2(`integrationTest`)는
   Testcontainers 초기화 단계에서 실패한다(기존 제약, 이번 변경과 무관).
   게이트 최종 판정은 CI가 한다
 
@@ -215,6 +219,31 @@
   추가했다(벨트+브레이스, 진짜 수정을 대체하지 않음). **여전히 psql/실제
   PostgreSQL 서버가 이 SQL을 어떻게 파싱하는지는 이 환경에서 실측하지
   못했다** — 셸 확장 단계까지만 증명했다.
+- **독립 리뷰가 구현 자체는 승인했지만, silent-failure 경로 하나를 새로
+  찾아 3차 수정을 요청했다.** `POSTGRES_USER`=`OVERMIND_DB_USER`로 두면:
+  ① postgres 엔트리포인트가 그 이름을 클러스터 superuser로 만들고,
+  ② `02-app-role.sh`의 `WHERE NOT EXISTS`가 "이미 있다"고 보고
+  `CREATE ROLE ... NOSUPERUSER`를 조용히 건너뛰고, ③ 두 `GRANT`는 이미
+  전권을 가진 그 역할에 별 의미 없이 성공하고, ④ 앱은 결국 superuser로
+  붙는다 — **어느 계층도 에러를 내지 않는다.** README·db.env.example·
+  app.env.example의 "달라야 한다" 경고는 산문일 뿐이라 이 경로를 전혀
+  막지 못했다. 이 두 계정 분리를 만든 이유였던 바로 그 Critical이 조용히
+  재현되는 구멍이었다. **고쳤다:** `02-app-role.sh`의 네 `: "${VAR:?...}"`
+  가드 다음, `psql` 호출 **이전**에 `if [ "$POSTGRES_USER" = "$OVERMIND_DB_USER" ];
+  then ... exit 1; fi`를 추가했다 — 메시지는 한국어로 두 변수 이름과
+  이유(§6.2 위반)를 명시한다. `WHERE NOT EXISTS`가 왜 이 검사를 대신할
+  수 없는지(이름이 같으면 그 자체가 "이미 존재"로 보여 조용히 통과한다)를
+  가드 바로 위 주석에 남겼다. `: "${VAR:?...}"` 스타일은 unset과 빈 문자열
+  둘 다에서 발동하는 것이 맞는 동작임을(네 값 모두 빈 문자열이면 무의미하다)
+  확인했고, 새 가드가 `psql` 호출보다 앞에 있음을 소스 순서로 확인했다.
+  **가드를 실제로 실행해서 두 결과를 다 봤다:** 같은 값(`overmind`/`overmind`)을
+  주고 전체 스크립트를 돌리자 `exit code: 1`과 5줄 안내 메시지가 정확히
+  나왔고, psql은 아예 호출되지 않았다. 다른 값(`postgres`/`overmind_app`)을
+  주자 가드를 통과해 실제로 `psql`을 불렀고, 이 환경에 PG 서버가 없어
+  `connection ... failed`로 실패했다 — **가드 통과 자체는 확인됐고, 그 뒤의
+  실패는 Docker 부재라는 이미 알려진 제약이지 가드 문제가 아니다.** 가드
+  섹션만 떼어낸 사본으로도 같은 두 결과(exit 1 / 통과)를 재현해 psql 유무와
+  무관하게 가드 로직만 검증했다.
 
 ### 다음 할 일
 

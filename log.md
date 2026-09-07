@@ -8,9 +8,86 @@
 ## 현재 상태
 
 - **마일스톤:** **M0 — Task 0~14 전부 master 병합 완료. 배포 설계 플랜(T1~T9)도
-  이 브랜치에서 전부 구현 완료.** 남은 것은 코드가 아니라 실배포·손 작업(H1~H6)·
-  수동 스모크(`docs/harness/70-m0-smoke.md`)·B-1~B-3 결정이다
-- **최근 갱신:** 2026-09-07 · Claude Code (원격 세션) — Task 9(결정을 등재하고
+  이 브랜치에서 전부 구현 완료. 전체 브랜치 리뷰의 수정 파도(Critical 2건 +
+  Important 4건 + Minor 4건)도 적용 완료.** 남은 것은 코드가 아니라 실배포·
+  손 작업(H1~H7)·수동 스모크(`docs/harness/70-m0-smoke.md`)·B-1~B-3 결정이다
+- **최근 갱신:** 2026-09-07 · Claude Code (원격 세션) — **전체 브랜치 리뷰
+  수정 파도.** 개별 태스크 리뷰는 9개 전부 통과했지만, 전체 브랜치 리뷰가
+  **태스크 조합에서만 드러나는 Critical 2건**을 새로 찾았다.
+  1. **`internal-proxies`가 절대 매치할 수 없었다** (`application.yml`).
+     Task 3이 이 값을 "앱이 127.0.0.1에 바인딩되고 Caddy도 루프백에서
+     붙는다"는 근거로 썼는데, 그건 **호스트 쪽 게시 주소**고
+     `RemoteIpValve`가 실제로 보는 건 **컨테이너 네트워크 네임스페이스
+     안의 피어 주소**다 — 이 둘을 같다고 전제한 게 결함이었다. Task 5가
+     나중에 앱을 Docker 브리지 네트워크(`overmind-net`) 위 컨테이너로
+     올리면서 이 전제가 깨졌다: `ports: ["127.0.0.1:8080:8080"]`로 게시된
+     연결은 컨테이너 안에서 브리지 게이트웨이(`172.x.0.1`)로 보이지
+     `127.0.0.1`로 보이지 않는다. 결과: forwarded 헤더가 항상 무시되고,
+     `getScheme()`이 `http`에 고정돼 401의 `resource_metadata`와 메타데이터
+     문서의 `resource`가 `http://`를 광고 — RFC 8707 `resource` 파라미터가
+     Auth0 API Identifier와 어긋나 **디스커버리가 통째로 깨지고 Task 1~3이
+     아무것도 전달하지 못한다.** 정규식을 `172.(16-31).x.x|127.0.0.1|::1`
+     계열로 넓히고, 왜 `127.0.0.1` 전제가 거짓이 됐는지·이 확장이 보안을
+     약화시키지 않는 이유(포트가 호스트 밖으로 안 나가는 건 이 정규식이
+     아니라 compose의 `127.0.0.1:` 바인딩)를 주석에 다시 썼다.
+  2. **재해복구 런북이 앱이 못 읽는 DB를 복원했다** (`deploy/README.md`).
+     복원 드릴의 `pg_restore --no-owner --no-acl`는 드릴 컨테이너에
+     `OVERMIND_DB_USER`가 아예 없어서 필요한 플래그인데, 이 근거를
+     "모든 `pg_restore` 호출부에 같은 플래그를" 식으로 균일하게 적용한
+     이전 리뷰 지시 때문에 **운영 복구 절차에도 그대로 복사돼 있었다.**
+     운영 절차에서는 2단계에서 `02-app-role.sh`가 이미 `OVERMIND_DB_USER`를
+     만들어 둔 뒤라, `--no-owner`를 주면 Flyway가 만든 테이블
+     (`flyway_schema_history` 등)의 소유권이 전부 부트스트랩 superuser로
+     넘어가 버리고 6단계에서 `OVERMIND_DB_USER`로 붙는 `app`이 기동 직후
+     permission denied로 크래시루프에 빠진다. 5단계 검증이 superuser로
+     조회해 이걸 못 잡는다는 것도 확인. 운영 절차의 4단계에서 두 플래그를
+     뺐고(`pg_dump`가 `CREATE EXTENSION IF NOT EXISTS`를 내보내므로 확장
+     충돌 없음), 드릴과 운영 절차 사이에 "왜 반대로 하는가"를 한 문단
+     남겼고, 5단계 설명에 "이 조회는 superuser라 소유권과 무관하게
+     통과한다 — 실제 증명은 ①(에러 없이 끝남 = 소유권/GRANT 재생 성공)에
+     있다"를 덧붙였다.
+
+  **Important 4건도 같은 파도에서 접었다:**
+  - **I1** — GHCR 패키지는 레포가 public이어도 `GITHUB_TOKEN`으로 올리면
+    기본 private이다(스펙 부록 A·`ci.yml` 주석이 "레포가 public이라 익명
+    pull 가능"이라고 잘못 단정하고 있었다). 스펙 정정, `ci.yml` 주석 정정,
+    플랜 H-표에 **H7**(첫 `publish` 뒤 패키지를 Public으로 바꾸거나 박스에서
+    `read:packages` PAT로 로그인) 추가 — H1·H5보다 먼저 걸리는, 박스에서
+    가장 먼저 막히는 손 작업이라고 표시했다.
+  - **I2** — README에 0단계(체크아웃)가 없어 모든 `deploy/...` 상대경로
+    명령이 전제하는 체크아웃의 존재·위치·ref가 어디에도 안 적혀 있었다.
+    `## 0. 체크아웃` 절 신설. "배포와 롤백" 절에도, `compose.yaml`/`initdb/`가
+    릴리스에서 바뀌면 `OVERMIND_TAG` sed만으로는 `/opt/overmind/`의 사본이
+    조용히(특히 `initdb/`는 빈 볼륨에서만 도니 **증상 없이**) 낡는다는
+    경고와 `sudo cp` 보완 절차를 추가했다.
+  - **I4** — `70-m0-smoke.md` D6/D7: Critical 1이 있는 상태에서는 D7이
+    아무것도 신뢰되지 않기 때문에 트리비얼하게 통과해 운영자가 헛되이
+    초록을 찍을 수 있었다. D7이 D6 green을 전제로 하게 명시하고, D6에
+    "원인은 거의 항상 `internal-proxies`에 브리지 대역이 빠진 것이지
+    `forward-headers-strategy` 자체가 아니다 — `.*`로 넓혀 우회하면 D7이
+    무의미해진다"는 안내를 추가했다.
+  - **D13** — 가드 로그 확인 문구를 실제 스크립트 메시지 그대로 인용하게
+    바꿔, "가드가 걸렸다"와 "`: \"${VAR:?}\"` 같은 다른 이유의 exit 1"이
+    로그만 보고 구분되게 했다.
+
+  **Minor 4건:** `compose.yaml`의 `pg_isready` healthcheck에 `start_period:
+  30s` 추가하고 주석을 "유닉스 소켓 응답까지만 증명, initdb의 임시 서버도
+  통과시킬 수 있다"로 정직하게 다시 썼다(`depends_on` 쪽 주석도 같이).
+  DR 3단계의 무제한 대기 루프를 드릴처럼 100초로 상한(healthcheck 예산
+  30+12*5=90초 + 여유)했다. `backup.pass`를 `sudo install -m 0600 /dev/null`로
+  먼저 만든 뒤 `tee`로 쓰게 해 world-readable 윈도우를 없앴다.
+
+  **범위 밖으로 명시된 것은 손대지 않았다** — `GRANT CONNECT` 중복, NUL 안전성,
+  `: "${VAR:?}"` 가드 부재, `.dockerignore` 부재, 로그 로테이션 부재,
+  D2/D12의 약한 반증가능성, D-M "열려 있음" 등.
+
+  **검증:** 정규식 fuzz(요구된 5매치·5비매치 전부 통과, 아래 참조),
+  `python3 -c "import yaml; ..."`로 `compose.yaml`·`ci.yml` 파싱 확인,
+  `./gradlew guardrails` 11/11 PASS, `./gradlew test` — 아래 참조. Docker가
+  없어 `docker compose config`·실제 기동·복원 시나리오 자체는 실행 불가 —
+  README를 운영자 시점으로 정독해 논리만 재검증했다.
+
+  이전 갱신(같은 날) — Task 9(결정을 등재하고
   스펙을 정정한다, 이 플랜의 마지막 태스크) 구현. `docs/arch/decisions.md`
   "확정"에 D-H~D-L을 브리프 그대로, 그리고 브리프에 없던 **D-N**(DB 계정을
   부트스트랩 superuser와 앱 전용 role로 분리)·**D-O**(시크릿 파일을 `db.env`/

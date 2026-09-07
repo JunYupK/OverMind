@@ -98,7 +98,12 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          # 레포가 public이라 박스는 익명으로 pull한다. PAT를 심을 필요가 없다.
+          # 레포가 public이어도 GITHUB_TOKEN으로 올린 GHCR 패키지는 기본
+          # private이다(레포 공개 여부와 무관). 박스가 익명으로 pull하려면
+          # 최초 publish 뒤 패키지 설정에서 Public으로 바꿔야 한다 — H1
+          # (docs/superpowers/plans/2026-09-04-overmind-deploy.md) 참고.
+          # private으로 남기기로 하면 박스에서 PAT(read:packages)로
+          # `docker login ghcr.io`가 필요하다.
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/build-push-action@v6

@@ -421,7 +421,13 @@ publish:
 
 `needs: [verify, guardrails]`가 핵심이다 — **게이트가 빨간 커밋은 이미지가 만들어지지 않는다.**
 
-레포가 public이므로 GHCR pull이 익명으로 가능하다. **박스에 PAT를 심지 않는다** — 관리할 시크릿이 하나 줄어든다.
+**정정 — 레포 공개 여부와 GHCR 패키지 공개 여부는 별개다.** 레포가 public이어도
+`GITHUB_TOKEN`으로 올린 GHCR 패키지는 **기본 private**이다. 박스가 익명으로
+pull하려면 첫 `publish` 실행 뒤 GitHub 패키지 설정에서 그 패키지를 Public으로
+바꿔야 한다(§부록 B에 붙는 남은 손 작업 H1 참고). private으로 남기기로 하면
+박스에서 `docker login ghcr.io`를 `read:packages` 권한의 PAT로 한 번 해 둬야
+한다 — "박스에 PAT를 심지 않는다"는 원래 서술은 패키지를 Public으로 바꾼
+뒤에만 참이다.
 
 ### 10.2 멀티아치
 

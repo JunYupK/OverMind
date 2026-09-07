@@ -1528,7 +1528,10 @@ D-M은 배포 스모크 D4가 돌기 전까지 '열려 있음'에 둔다. 코드
 | H4 | **디스크 정리** — `docker system df`로 소비처 확인 후 정리. **볼륨 삭제는 flight-friend 종료 확정 뒤에** | 100 GB가 차 있다 |
 | H5 | **미확정 값 확인** — `nproc`, `free -m`, `docker compose version`, 도메인 | Task 5의 `mem_limit`이 막혀 있다 |
 | H6 | **원격 브랜치 3종 삭제** — `codex/m0-t2-t3`, `feat/m0`, `claude/overmind-handover-8njuet`. 원격 컨테이너에서 `git push --delete`가 403이다 | 환경 제약 |
+| H7 | **GHCR 패키지 공개 전환(또는 PAT)** — CI가 `publish`를 처음 돌린 뒤 GitHub 패키지 설정에서 `overmind` 이미지를 Public으로 바꾼다. Public으로 두지 않으려면 대신 박스에서 `docker login ghcr.io`를 `read:packages` PAT로 한 번 해 둔다 | 레포가 public이어도 `GITHUB_TOKEN`으로 올린 GHCR 패키지는 기본 private이다(레포 공개 여부와 무관) — 안 하면 `deploy/README.md`의 첫 `docker compose pull`이 `denied`로 실패한다 |
 
 **H5가 Task 5를 막는다.** `mem_limit` 없이 배포하면 메모리 압박 때 OOM killer가 PG를 죽인다. Task 5는 자산을 만들되 그 값을 주석으로 두고 README에 경고를 남기는 것까지가 범위다.
 
 **H1이 Task 1~3의 실효를 막는다.** 코드가 다 맞아도 Auth0 설정이 없으면 디스커버리 체인이 5단계에서 끊긴다. 배포 스모크 D5~D9가 그걸 잡는다.
+
+**H7이 첫 기동을 막는다.** GHCR 패키지가 private인 채로 두면 "최초 1회" 절의 `docker compose pull`이 익명 인증 실패로 끝난다 — H1·H5보다 먼저, 박스에서 가장 먼저 걸리는 손 작업이다.

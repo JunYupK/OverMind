@@ -14,10 +14,21 @@ services:
       # $$는 compose 자신의 ${...} 치환을 피해 컨테이너 셸에 리터럴 $를 넘기는
       # 이스케이프다 — env_file로 바뀐 뒤에도 POSTGRES_USER/POSTGRES_DB는
       # 컨테이너 안에 실제로 존재하므로(db.env가 주입) 그대로 동작한다.
+      #
+      # 이 pg_isready가 증명하는 것: 유닉스 소켓으로 서버가 연결을 받는다.
+      # 증명하지 못하는 것: 그게 initdb가 끝난 "진짜" 서버라는 것. postgres
+      # 엔트리포인트는 initdb 스크립트(01-vector.sql, 02-app-role.sh)를 도는
+      # 동안 **임시** 서버를 유닉스 소켓으로 잠깐 띄운다 — pg_isready는 이
+      # 임시 서버에도 성공으로 답한다. start_period로 그 구간을 건너뛰어
+      # 초기 재시도가 여기 걸리지 않게 한다(재시도 자체가 임시 서버에 우연히
+      # 성공해 "healthy"를 조기에 찍는 경로는 여전히 이론상 남는다 — depends_on의
+      # 실질적 목적은 "포트가 열려 있다"이지 "Flyway가 쓸 스키마까지 준비됐다"가
+      # 아니다).
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 12
+      start_period: 30s
     networks: [overmind-net]
     # mem_limit: <nproc/free -m 확인 후 채운다. README 참조>
 
@@ -26,7 +37,11 @@ services:
     restart: unless-stopped
     depends_on:
       db:
-        condition: service_healthy   # Flyway가 연결 가능한 DB를 만나야 한다
+        # healthcheck가 보장하는 것은 "pg_isready가 유닉스 소켓에 응답한다"까지다
+        # (start_period로 initdb 중 뜨는 임시 서버 구간은 건너뛴다). 스키마가
+        # Flyway를 받을 준비까지 됐다는 보장은 아니다 — 그 간극에서 app이
+        # Flyway 단계에서 실패해도 restart: unless-stopped가 재기동을 반복한다.
+        condition: service_healthy
     # 127.0.0.1: 접두사는 필수다 (C-1). 없으면 Docker가 iptables DOCKER 체인에
     # 규칙을 직접 넣어 firewalld를 우회하고 0.0.0.0:8080이 인터넷에 열린다.
     ports: ["127.0.0.1:8080:8080"]

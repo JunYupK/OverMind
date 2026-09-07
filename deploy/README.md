@@ -140,12 +140,34 @@ M0 데이터는 1인 관찰 이벤트 로그라 덤프가 한동안 KB~MB 단위
 docker run -d --name overmind-restore-drill \
   -e POSTGRES_PASSWORD=drill -e POSTGRES_DB=overmind -e POSTGRES_USER=drill \
   pgvector/pgvector:pg16
-sleep 10
+
+# 고정 sleep 대신 준비될 때까지 기다린다 -- 디스크가 느리거나 이미지를 새로
+# 받는 콜드 스타트면 고정 시간으로는 부족해 "연결 실패"가 "백업이 깨졌다"처럼
+# 보이는, 이 드릴이 없애려는 바로 그 모호함을 만든다. 30초 넘게 준비 안 되면
+# 컨테이너 자체가 고장난 것이니 무한 대기하지 않고 멈춘다.
+for _ in $(seq 1 30); do
+    docker exec overmind-restore-drill pg_isready -U drill && break
+    sleep 1
+done
 
 gpg --batch --decrypt --passphrase-file /etc/overmind/backup.pass \
     /var/backups/overmind/<최신>.dump.gpg \
-  | docker exec -i overmind-restore-drill pg_restore -U drill -d overmind --no-owner
+  | docker exec -i overmind-restore-drill \
+      pg_restore -U drill -d overmind --no-owner --no-acl
+```
 
+**`--no-owner --no-acl`를 둘 다 준다.** 이 드릴 컨테이너는 프로덕션 클러스터의
+소유권도 역할도 없다 -- `pgvector/pgvector:pg16`를 `POSTGRES_USER=drill` 하나로만
+띄웠을 뿐, `deploy/initdb`의 초기화 스크립트를 전혀 돌리지 않아 `OVERMIND_DB_USER`
+역할 자체가 이 컨테이너에는 없다. `pg_dump`는 기본적으로 스키마 ACL도 함께
+담는데, 그 안에는 `02-app-role.sh`가 만든 `GRANT USAGE, CREATE ON SCHEMA public
+TO <OVERMIND_DB_USER>`가 들어 있다. `--no-acl` 없이 복원하면 `pg_restore`가 이
+GRANT에서 "role ... does not exist" 오류를 내고 nonzero로 끝난다 -- 테이블과
+행은 전부 멀쩡히 복원됐는데도 그렇다. 이 드릴이 확인하려는 것은 **소유권·권한이
+아니라 데이터가 살아있는가**이므로, 드릴에는 존재하지 않는 소유권·역할 정보는
+일부러 버린다.
+
+```bash
 # 원본과 대조 -- 원본 쪽 계정은 db.env의 부트스트랩 superuser다(백업을
 # 그 계정으로 떴으므로 조회도 같은 계정으로 맞춘다)
 set -a; source /etc/overmind/db.env; set +a
@@ -158,6 +180,34 @@ docker rm -f overmind-restore-drill
 ```
 
 두 숫자가 같아야 한다. 다르면 백업이 불완전한 것이고, **절차를 고치지 말고 원인을 찾는다.**
+
+### 실제 복구 순서 — 드릴과 다르다, 반드시 지킨다
+
+드릴은 빈 컨테이너에 바로 복원하지만, 실제 재해 복구는 이 README의 "최초 1회" →
+"첫 기동" 순서를 그대로 따르면 **안 된다.** `docker compose up -d`는 `app`도 같이
+띄우고, `depends_on: {db: {condition: service_healthy}}`는 `pg_isready`만
+기다린다 -- **사람이 `pg_restore`를 끝내는 것은 기다려주지 않는다.** 그대로
+두면 Flyway가 새 볼륨에 빈 스키마를 먼저 만들어 버리고, 그 뒤에 하는
+`pg_restore`(커스텀 포맷, `--clean` 없음)는 이미 존재하는 객체와 충돌한다.
+
+**그래서 순서를 반드시 이렇게 강제한다:**
+
+1. `docker volume create overmind-pgdata` (새 볼륨 -- 기존 볼륨이 죽어서
+   복구하는 상황이라고 가정한다)
+2. `docker compose -f /opt/overmind/compose.yaml up -d db` -- **`db`만** 띄운다.
+   `app`은 아직 기동하지 않는다
+3. `db`가 healthy해질 때까지 기다린다:
+   `until docker compose -f /opt/overmind/compose.yaml ps db | grep -q healthy;
+   do sleep 1; done` (compose의 healthcheck가 `pg_isready`를 이미 5초 간격·
+   12회 재시도로 돈다 — 이 루프는 그 결과를 폴링할 뿐이다)
+4. 위 복원 드릴과 같은 방식으로 실제 운영 `db` 서비스에 복원한다:
+   `gpg --batch --decrypt ... | docker compose -f /opt/overmind/compose.yaml
+   exec -T db pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --no-acl`
+5. 행 수를 확인해 복원이 온전한지 판단한 **다음에만**
+   `docker compose -f /opt/overmind/compose.yaml up -d app`으로 `app`을 올린다
+
+`db`만 먼저 올리고 `app`을 최후에 올리는 것이 전부다 -- Flyway가 빈 스키마를
+선점하기 전에 사람이 개입할 시간을 번다.
 
 ## 절대 하지 않는 것
 

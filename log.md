@@ -9,7 +9,16 @@
 
 - **마일스톤:** **M0 — Task 0~14 전부 master 병합 완료.** 남은 것은 코드가 아니라
   실배포·수동 스모크·B-1~B-3 결정이다
-- **최근 갱신:** 2026-09-07 · Claude Code (원격 세션) — Task 7(암호화 백업)
+- **최근 갱신:** 2026-09-07 · Claude Code (원격 세션) — Task 7 리뷰 반영:
+  `deploy/README.md`의 복원 드릴을 세 군데 고쳤다. `pg_restore`에
+  `--no-acl`을 추가(드릴 컨테이너에는 `OVERMIND_DB_USER` 역할이 없어
+  기존 명령이 스키마 GRANT에서 매번 에러로 끝났다 — 데이터는 멀쩡한데
+  실패로 보였다), `sleep 10`을 `pg_isready` 폴링 루프로 교체(고정 대기가
+  콜드 스타트에서 연결 실패를 백업 손상처럼 보이게 했다), 그리고 실제
+  재해 복구 순서(`db`만 먼저 올리고 복원한 뒤 `app`을 올린다 —
+  `depends_on: service_healthy`는 사람이 `pg_restore`를 끝내는 것을
+  기다려주지 않아 그대로 두면 Flyway가 빈 스키마를 먼저 만들어 충돌한다)
+  를 새 절로 문서화했다. 이전 갱신(같은 날) — Task 7(암호화 백업)
   구현: `deploy/backup/overmind-backup.sh` + systemd `.service`/`.timer`,
   `deploy/README.md`에 설치·박스 밖 반출·복원 드릴 절차 추가. 브리프가
   Task 5 이전 파일 구조(`overmind.env` 단일 파일)를 참조하고 있어 실제
@@ -316,6 +325,45 @@
   `docker compose exec db pg_dump`·`pg_restore`·복원 드릴 자체는 이
   환경에서 실행하지 못했다** — 위 증명은 셸 로직(파이프 실패 전파, 트랩,
   빈 파일 검사)만 검증한다.
+- **T7 리뷰에서 Important 2건 — 복원 드릴이 애매한 실패를 만들었다.**
+  스펙·품질은 승인됐지만(빈 파일 가드는 독립 재검증에서도 버텼다),
+  ① `pg_restore -U drill -d overmind --no-owner`에 `--no-acl`이 빠져
+  있었다. `pg_dump`가 기본으로 담는 스키마 ACL 안에 `02-app-role.sh`가
+  만든 `GRANT ... ON SCHEMA public TO <OVERMIND_DB_USER>`가 있는데, 드릴
+  컨테이너는 초기화 스크립트를 안 돌려 그 역할이 아예 없다 — 테이블·행은
+  전부 멀쩡히 복원돼도 이 GRANT 하나 때문에 `pg_restore`가 매번 "role ...
+  does not exist" 에러로 끝난다. 운영자가 보기엔 백업이 깨진 것과
+  구분이 안 된다. `--no-acl`을 추가하고, 드릴이 검증하려는 건 소유권·
+  권한이 아니라 데이터 생존이라는 이유를 README에 남겼다.
+  ② 드릴이 실제 재해 복구 순서를 전혀 검증하지 않았고 그 순서 자체가
+  어디에도 문서화돼 있지 않았다. 이 README의 "최초 1회"→"첫 기동"을
+  그대로 따르면 `docker compose up -d`가 `app`도 같이 올리는데,
+  `depends_on: service_healthy`는 `pg_isready`만 보고 사람이 `pg_restore`를
+  끝내는 걸 기다려주지 않는다 — Flyway가 빈 스키마를 먼저 만들고 나면
+  뒤이은 `pg_restore`(커스텀 포맷, `--clean` 없음)가 기존 객체와 충돌한다.
+  이 플랜에 DR 런북을 소유한 태스크가 따로 없어 여기 안 적으면 어디에도
+  없는 상태였다. "실제 복구 순서" 절을 새로 추가 — `db`만 먼저 올리고,
+  healthy를 기다리고, 복원하고, 행 수를 확인한 **다음에만** `app`을
+  올린다는 5단계를 못박았다. compose를 다시 설계하지 않고 순서만
+  문서화하는 것으로 범위를 한정했다(리뷰 지시대로).
+  **Minor 1건도 같이 고쳤다:** 고정 `sleep 10`을 `pg_isready` 폴링
+  루프(최대 30초, 초과하면 그대로 실패)로 바꿔 콜드 스타트에서
+  "연결 실패"가 "백업 손상"처럼 보이는 같은 종류의 모호함을 없앴다.
+  **리뷰가 이번 라운드에서 보류하기로 한 2건(NUL/개행 미대응 보존 정리,
+  `POSTGRES_USER`/`POSTGRES_DB` 존재 검증 부재)은 건드리지 않았다** —
+  전자는 이 스크립트가 만드는 파일명 범위에서는 안전함을 리뷰가 이미
+  실측했고, 후자는 ERR 트랩으로 이미 크게 실패하므로 진단 품질 문제일
+  뿐 정확성 문제가 아니다.
+  `overmind-backup.sh` 자체는 건드리지 않았다 — `bash -n` 재확인으로
+  변경 없음을 확인했다. `./gradlew guardrails`는 여전히 11/11 PASS.
+  **README를 처음 보는 운영자 관점으로 위에서 아래로 다시 읽었다** —
+  변수(`$POSTGRES_USER` 등)가 나오기 전에 어디서 오는지(각 절 도입부의
+  `source /etc/overmind/db.env`) 먼저 나오고, "최초 1회"에서 이미 만든
+  파일 경로(`/opt/overmind/compose.yaml`, `/etc/overmind/backup.pass`)를
+  그대로 재사용해 앞뒤로 끊기지 않는다. **여전히 Docker/PostgreSQL이
+  없어 드릴 자체(컨테이너 기동, 실제 `--no-acl` 복원, 새 5단계 DR 순서)는
+  실행해 확인하지 못했다** — 이번 확인은 문서를 순서대로 읽고 앞 절의
+  산출물과 뒷 절의 입력이 실제로 맞물리는지를 손으로 대조한 것이다.
 
 ### 다음 할 일
 

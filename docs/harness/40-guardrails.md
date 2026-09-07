@@ -19,9 +19,14 @@
 |---|---|
 | 제품 코드 | `src/**` |
 | 게이트 기계 | `build.gradle.kts`, `settings.gradle.kts`, `.github/**`, `docs/harness/**` |
+| 배포 자산 | `deploy/**`, `Dockerfile` |
 | 설계와 결정 | `docs/superpowers/**`, `docs/arch/**`, `docs/requirements/**`, `AGENTS.md`, `CLAUDE.md` |
 
 <!-- watched-paths:end -->
+
+배포 자산을 넣은 이유는 설계 문서와 같다. compose 파일의 포트 바인딩 하나, CI의
+이미지 태그 하나가 운영 보안을 바꾸는데, git diff는 무엇이 바뀌었는지만 보여주고
+왜 바꿨는지는 보여주지 않는다.
 
 설계 문서를 넣은 이유는, 스펙이나 플랜만 쓰는 세션은 코드를 한 줄도 건드리지 않을 수
 있기 때문이다. 그러면 설계 세션 하나가 통째로 로그에 흔적을 남기지 않고 지나간다.

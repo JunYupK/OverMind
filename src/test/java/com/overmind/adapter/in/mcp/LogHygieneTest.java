@@ -175,7 +175,10 @@ class LogHygieneTest extends PostgresTestBase {
             String token = bearer("memory:read memory:write", INVALID_SUBJECT);
             HttpResponse<String> response = post(token, null, call("remember_memory", observation(IDEMPOTENCY, CONTENT)));
             httpError(response, 401, "UNAUTHENTICATED");
-            assertThat(response.headers().firstValue("WWW-Authenticate")).contains("Bearer");
+            assertThat(response.headers().firstValue("WWW-Authenticate").orElseThrow())
+                    .startsWith("Bearer ")
+                    .contains("resource_metadata=\"")
+                    .contains("/.well-known/oauth-protected-resource/mcp");
             assertRows(0);
             assertClean(capture);
         }

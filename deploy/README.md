@@ -1,0 +1,336 @@
+# 배포
+
+설계 근거는 `docs/superpowers/specs/2026-09-04-overmind-deploy-design.md`에 있다.
+여기에는 손 순서만 있다.
+
+## 0. 체크아웃
+
+아래 모든 명령은 `deploy/...` 상대 경로를 쓴다 — 박스에 이 저장소의 체크아웃이
+먼저 있어야 한다. 최초 1회:
+
+```bash
+git clone https://github.com/junyupk/overmind.git ~/overmind
+cd ~/overmind
+git checkout <배포할 커밋 sha>   # /opt/overmind/.env에 적을 OVERMIND_TAG와 같은 값
+```
+
+이후 이 문서의 모든 명령은 이 체크아웃 루트에서 실행한다고 가정한다. 배포할
+때마다(`OVERMIND_TAG`를 바꿀 때마다) `git fetch && git checkout <새 sha>`로
+이 체크아웃도 같은 sha로 맞춰 둔다 — "배포와 롤백" 절 참고.
+
+## 먼저 채워야 할 값
+
+`mem_limit`이 `compose.yaml`에 주석으로 남아 있다. **채우기 전에는 운영에 쓰지 않는다.**
+JVM의 `-XX:MaxRAMPercentage=60`과 짝이라, 한도가 없으면 메모리 압박 때 OOM killer가
+앱보다 PostgreSQL을 먼저 죽인다.
+
+인스턴스에서 확인한다:
+
+```bash
+nproc
+free -m
+docker compose version    # v2 플러그인인지 확인
+df -h && docker system df # 디스크 여유
+```
+
+## 비밀 파일 두 개 — db.env와 app.env
+
+`env_file:`은 파일을 그대로 컨테이너 안에 주입하는 기구이고, `${...}` 치환은
+compose 파일 자체의 자리표시자를 채우는 별개 기구다. 이 둘을 섞으면 안 되므로
+비밀은 전부 `env_file:` 쪽으로 두고, `${...}` 치환에는 `OVERMIND_TAG` 하나만 쓴다.
+
+- **`db.env`** — postgres 공식 이미지의 부트스트랩 superuser(`POSTGRES_DB`/
+  `POSTGRES_USER`/`POSTGRES_PASSWORD`)와, `02-app-role.sh`가 만들 앱 전용
+  역할(`OVERMIND_DB_USER`/`OVERMIND_DB_PASSWORD`)을 담는다. **`POSTGRES_USER`는
+  `OVERMIND_DB_USER`와 반드시 달라야 한다** — 같으면 앱이 클러스터 superuser로
+  접속하게 되어 스펙 §6.2("앱 계정 하나를 쓴다. superuser가 아니다")를 어긴다.
+- **`app.env`** — 앱이 실제로 읽는 7개 변수. `OVERMIND_DB_USER`/
+  `OVERMIND_DB_PASSWORD`는 `db.env`의 같은 이름의 값과 **정확히 같아야 한다**.
+
+## 최초 1회
+
+```bash
+sudo mkdir -p /opt/overmind
+sudo cp deploy/compose.yaml /opt/overmind/
+sudo cp -r deploy/initdb /opt/overmind/
+sudo docker volume create overmind-pgdata      # external 볼륨. compose가 만들지 않는다
+
+sudo install -d -m 0700 -o root -g root /etc/overmind
+sudo install -m 0600 -o root -g root deploy/db.env.example /etc/overmind/db.env
+sudo install -m 0600 -o root -g root deploy/app.env.example /etc/overmind/app.env
+sudo "${EDITOR:-vi}" /etc/overmind/db.env    # POSTGRES_* + OVERMIND_DB_USER/PASSWORD
+sudo "${EDITOR:-vi}" /etc/overmind/app.env   # OVERMIND_DB_USER/PASSWORD는 위와 같은 값으로
+printf 'OVERMIND_CURSOR_SECRET=%s\n' "$(openssl rand -hex 32)" \
+  | sudo tee -a /etc/overmind/app.env >/dev/null
+
+echo "OVERMIND_TAG=<master의 커밋 sha>" | sudo tee /opt/overmind/.env
+```
+
+`/opt/overmind/.env`에는 **`OVERMIND_TAG` 하나만** 있어야 한다. 이 파일은
+compose 파일 안의 `${...}` **치환**에 쓰이는 것이지, 컨테이너 안으로 주입되는
+`env_file:`이 아니다 — 여기에 다른 값을 더 적어도 컨테이너 안에는 나타나지
+않는다. DB 비밀은 위에서 이미 `/etc/overmind/{db,app}.env`에 들어갔다.
+
+### 첫 기동
+
+```bash
+cd /opt/overmind
+sudo docker compose pull && sudo docker compose up -d
+sudo docker compose logs -f db app   # db가 healthy, 이어서 app이 Flyway를 통과하는지 확인
+```
+
+**앱 전용 역할은 이 첫 기동에서 딱 한 번만 만들어진다.** `docker-entrypoint-
+initdb.d`(`01-vector.sql`, `02-app-role.sh`)는 데이터 디렉터리가 비어 있을
+때만 실행되기 때문이다. **볼륨이 external이라 재기동해도 이 초기화는 다시
+돌지 않는다** — 이미 데이터가 있는 볼륨에 새 앱 역할이 필요해지면(예:
+`OVERMIND_DB_USER`를 바꾸는 경우) `docker compose exec db psql`로 손으로
+만들어야 한다. `02-app-role.sh`를 그대로 복사해 붙여 넣으면 된다.
+
+## 배포와 롤백
+
+```bash
+cd /opt/overmind
+sudo sed -i "s/^OVERMIND_TAG=.*/OVERMIND_TAG=<새 sha>/" .env
+sudo docker compose pull && sudo docker compose up -d
+```
+
+롤백은 sha를 되돌리고 같은 두 줄이다. `latest`로 배포하지 않는다 — 무엇이 돌고
+있는지 알 수 없고 롤백 대상도 사라진다.
+
+**이 두 줄은 `OVERMIND_TAG`만 바꾼다.** 릴리스가 `deploy/compose.yaml`이나
+`deploy/initdb/`를 바꿨다면 이걸로는 `/opt/overmind/`의 사본이 조용히
+낡은 채로 남는다 — `compose.yaml`은 다음에 `docker compose up -d`를 돌릴 때
+바로 드러나지만, `initdb/`는 빈 볼륨에서만 실행되므로 낡아 있어도 **아무
+증상도 없다가** 다음에 볼륨을 새로 만들 때(재해 복구 등) 옛 스크립트가
+돈다. 그 파일들이 바뀐 릴리스라면 위 sed 전에 먼저:
+
+```bash
+cd ~/overmind && git fetch && git checkout <새 sha>   # §0
+sudo cp deploy/compose.yaml /opt/overmind/
+sudo cp -r deploy/initdb /opt/overmind/
+```
+
+## 백업
+
+### 설치
+
+```bash
+sudo cp -r deploy/backup /opt/overmind/
+sudo chmod +x /opt/overmind/backup/overmind-backup.sh
+
+# gpg 패스프레이즈. 값이 셸 히스토리에 남지 않는다.
+# 파일을 먼저 0600으로 만들어 둔다 -- tee가 기본 umask로 새 파일을 만들고
+# chmod가 그다음 줄에서야 좁히면, 그 사이 잠깐 세계에서 읽히는 창이 생긴다.
+sudo install -m 0600 -o root -g root /dev/null /etc/overmind/backup.pass
+printf '%s\n' "$(openssl rand -base64 32)" | sudo tee /etc/overmind/backup.pass >/dev/null
+
+sudo cp /opt/overmind/backup/overmind-backup.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now overmind-backup.timer
+sudo systemctl start overmind-backup.service    # 한 번 즉시 돌려본다
+journalctl -u overmind-backup -n 30
+```
+
+`overmind-backup.sh`는 `/etc/overmind/db.env`만 읽는다(`POSTGRES_USER`로
+`pg_dump`를 부른다 — 이유는 스크립트 상단 주석 참조: 부트스트랩 superuser는
+권한 검사를 우회하므로 앱 역할의 소유권에 기대는 것보다 더 완전한 덤프를
+보장한다). `app.env`는 이 스크립트가 열지 않지만 복구 전제조건으로 아래
+"박스 밖으로 내보내기"에 포함해야 한다.
+
+**`/etc/overmind/backup.pass`의 사본을 박스 밖에 둔다.** 이걸 잃으면 백업을
+복호화할 수 없다.
+
+### 박스 밖으로 내보내기
+
+로컬만으로는 백업이 아니다 — 인스턴스가 죽으면 백업도 같이 죽는다.
+OCI Always Free에 20 GB 오브젝트 스토리지가 포함된다. 버킷은 private으로 만들고
+(서버측 암호화는 기본), `oci os object put`으로 올린다. gpg는 그 위의 이중 방어라
+OCI 콘솔 접근권만으로는 내용을 볼 수 없다.
+
+M0 데이터는 1인 관찰 이벤트 로그라 덤프가 한동안 KB~MB 단위다. 용량은 제약이 아니다.
+
+**`.dump.gpg` 파일만으로는 복구가 끝나지 않는다.** 아래 두 파일의 사본도
+박스 밖에 따로 둔다 — 둘 다 DB 덤프 안에는 없는 값이다:
+
+- **`/etc/overmind/db.env`** — 복원할 때 붙을 계정(`POSTGRES_USER`/
+  `POSTGRES_PASSWORD`, `OVERMIND_DB_USER`/`OVERMIND_DB_PASSWORD`)이 여기
+  있다. 이게 없으면 복호화한 덤프가 있어도 무슨 계정으로 `pg_restore`를
+  부를지 알 수 없다.
+- **`/etc/overmind/app.env`** — `OVERMIND_CURSOR_SECRET`이 여기 있다. DB를
+  통째로 복원해도 이 값이 바뀌면 기존에 발급된 커서를 못 쓴다(데이터
+  손실은 아니지만 클라이언트는 페이지네이션을 처음부터 시작해야 한다).
+  이건 백업이 아니라 복구 전제조건이다 — 잃으면 DB는 복원돼도 서비스는
+  이전과 같은 상태로 복원되지 않는다.
+
+### 복원 드릴 — 이걸 해야 백업이다
+
+**운영 DB에 복원하지 않는다.** 별도 컨테이너에 복원하고 행 수를 대조한다.
+
+```bash
+docker run -d --name overmind-restore-drill \
+  -e POSTGRES_PASSWORD=drill -e POSTGRES_DB=overmind -e POSTGRES_USER=drill \
+  pgvector/pgvector:pg16
+
+# 고정 sleep 대신 준비될 때까지 기다린다 -- 디스크가 느리거나 이미지를 새로
+# 받는 콜드 스타트면 고정 시간으로는 부족해 "연결 실패"가 "백업이 깨졌다"처럼
+# 보이는, 이 드릴이 없애려는 바로 그 모호함을 만든다. 30초 넘게 준비 안 되면
+# 컨테이너 자체가 고장난 것이니 무한 대기하지 않고 멈춘다.
+for _ in $(seq 1 30); do
+    docker exec overmind-restore-drill pg_isready -U drill && break
+    sleep 1
+done
+
+gpg --batch --decrypt --passphrase-file /etc/overmind/backup.pass \
+    /var/backups/overmind/<최신>.dump.gpg \
+  | docker exec -i overmind-restore-drill \
+      pg_restore -U drill -d overmind --no-owner --no-acl
+```
+
+이 드릴은 던져버릴 컨테이너에 고정된 `drill` 계정으로 붙는다 — 아래
+"실제 복구 순서"는 겉모습이 비슷해 보이지만 운영 `db` 서비스에
+`db.env`의 진짜 계정으로 붙는, 별개의 완결된 절차다. 실제 복구 상황에서
+이 드릴 명령을 그대로 손으로 옮겨 적지 않는다 — `-U drill -d overmind`를
+운영 DB에 잘못 쓰는 사고가 바로 이 구분이 막으려는 것이다.
+
+**`--no-owner --no-acl`를 둘 다 준다.** 이 드릴 컨테이너는 프로덕션 클러스터의
+소유권도 역할도 없다 -- `pgvector/pgvector:pg16`를 `POSTGRES_USER=drill` 하나로만
+띄웠을 뿐, `deploy/initdb`의 초기화 스크립트를 전혀 돌리지 않아 `OVERMIND_DB_USER`
+역할 자체가 이 컨테이너에는 없다. `pg_dump`는 기본적으로 스키마 ACL도 함께
+담는데, 그 안에는 `02-app-role.sh`가 만든 `GRANT USAGE, CREATE ON SCHEMA public
+TO <OVERMIND_DB_USER>`가 들어 있다. `--no-acl` 없이 복원하면 `pg_restore`가 이
+GRANT에서 "role ... does not exist" 오류를 내고 nonzero로 끝난다 -- 테이블과
+행은 전부 멀쩡히 복원됐는데도 그렇다. 이 드릴이 확인하려는 것은 **소유권·권한이
+아니라 데이터가 살아있는가**이므로, 드릴에는 존재하지 않는 소유권·역할 정보는
+일부러 버린다.
+
+**이 두 플래그는 드릴에만 준다.** 아래 "실제 복구 순서"의 운영 `db`에는
+`02-app-role.sh`가 이미 만들어 둔 `OVERMIND_DB_USER`가 존재하므로, 같은
+플래그를 쓰면 오히려 Flyway가 만든 테이블의 소유권이 복원되지 않은 채
+부트스트랩 superuser 앞으로 남아 `app`이 기동 직후 permission denied로
+죽는다 — 드릴은 "역할이 없어서" 플래그가 필요하고, 운영 복구는 "역할이
+있어서" 플래그를 빼야 한다.
+
+```bash
+# 원본과 대조 -- 원본 쪽 계정은 db.env의 부트스트랩 superuser다(백업을
+# 그 계정으로 떴으므로 조회도 같은 계정으로 맞춘다)
+set -a; source /etc/overmind/db.env; set +a
+docker compose -f /opt/overmind/compose.yaml exec -T db \
+  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc 'SELECT count(*) FROM observation'
+docker exec -i overmind-restore-drill \
+  psql -U drill -d overmind -tAc 'SELECT count(*) FROM observation'
+
+docker rm -f overmind-restore-drill
+```
+
+두 숫자가 같아야 한다. 다르면 백업이 불완전한 것이고, **절차를 고치지 말고 원인을 찾는다.**
+
+### 실제 복구 순서 — 드릴과 다르다, 반드시 지킨다
+
+드릴은 빈 컨테이너에 바로 복원하지만, 실제 재해 복구는 이 README의 "최초 1회" →
+"첫 기동" 순서를 그대로 따르면 **안 된다.** `docker compose up -d`는 `app`도 같이
+띄우고, `depends_on: {db: {condition: service_healthy}}`는 `pg_isready`만
+기다린다 -- **사람이 `pg_restore`를 끝내는 것은 기다려주지 않는다.** 그대로
+두면 Flyway가 새 볼륨에 빈 스키마를 먼저 만들어 버리고, 그 뒤에 하는
+`pg_restore`(커스텀 포맷, `--clean` 없음)는 이미 존재하는 객체와 충돌한다.
+
+**그래서 순서를 반드시 이렇게 강제한다.** 아래 명령은 위 복원 드릴과
+겉모습이 비슷하지만 별개다 — 드릴은 던져버릴 컨테이너에 고정된 `drill`
+계정으로 붙고, 여기는 운영 `db` 서비스에 `db.env`의 진짜 계정으로 붙는다.
+그대로 복사해서 쓸 수 있게 각 단계를 완결된 명령으로 적는다.
+
+1. 새 볼륨을 만든다(기존 볼륨이 죽어서 복구하는 상황이라고 가정한다):
+
+   ```bash
+   docker volume create overmind-pgdata
+   ```
+
+2. **`db`만** 띄운다. `app`은 아직 기동하지 않는다:
+
+   ```bash
+   docker compose -f /opt/overmind/compose.yaml up -d db
+   ```
+
+3. `db`가 healthy해질 때까지 기다린다(compose의 healthcheck가 `pg_isready`를
+   이미 `start_period: 30s` + 5초 간격·12회 재시도로 돌고 있다 — 이 루프는
+   그 결과를 폴링할 뿐이다). 위 복원 드릴과 같은 이유로 고정 sleep이 아니라
+   폴링을 쓰지만, 여기도 무한정 기다리지 않는다 — `db`가 애초에 기동하지
+   못하는 상태(예: 볼륨·이미지 문제)라면 영원히 healthy가 안 되므로, 그
+   healthcheck 예산(30 + 12*5 = 90초)에 여유를 더한 100초에서 멈춘다:
+
+   ```bash
+   for _ in $(seq 1 100); do
+       docker compose -f /opt/overmind/compose.yaml ps db | grep -q healthy && break
+       sleep 1
+   done
+   docker compose -f /opt/overmind/compose.yaml ps db | grep -q healthy \
+     || { echo "db가 100초 안에 healthy가 되지 않았다 — 진행하지 말고 원인을 찾는다" >&2; exit 1; }
+   ```
+
+4. 운영 `db` 서비스에 복원한다. `<복원할 백업 파일>`을
+   `ls /var/backups/overmind/`로 고른 실제 파일 이름으로 바꾼다:
+
+   ```bash
+   set -a; source /etc/overmind/db.env; set +a   # POSTGRES_USER/POSTGRES_DB — 운영 계정. 드릴의 고정 drill 계정과 다르다
+
+   gpg --batch --decrypt --passphrase-file /etc/overmind/backup.pass \
+       /var/backups/overmind/<복원할 백업 파일>.dump.gpg \
+     | docker compose -f /opt/overmind/compose.yaml exec -T db \
+         pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+   ```
+
+   **여기서는 `--no-owner --no-acl`를 주지 않는다** — 드릴과 반대다. 2단계에서
+   올린 `db`는 이미 `02-app-role.sh`로 `OVERMIND_DB_USER`를 만든 뒤이므로,
+   부트스트랩 superuser(`POSTGRES_USER`)가 덤프의 `ALTER TABLE ... OWNER TO`와
+   `GRANT`를 그대로 재생해도 실패하지 않는다. 오히려 `--no-owner`를 주면
+   Flyway가 만든 테이블(`memory_subject`/`observation`/`flyway_schema_history`)의
+   소유권이 전부 `POSTGRES_USER`로 넘어가 버려, 6단계에서 `OVERMIND_DB_USER`로
+   붙는 `app`이 `flyway_schema_history`를 읽자마자 `permission denied`로
+   크래시루프에 빠진다. `pg_dump`가 `CREATE EXTENSION ... IF NOT EXISTS`를
+   내보내므로 이미 만들어져 있는 pgvector 확장과도 충돌하지 않는다.
+
+5. 복원이 온전한지 확인한다:
+
+   ```bash
+   docker compose -f /opt/overmind/compose.yaml exec -T db \
+     psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+     'SELECT count(*), max(created_at) FROM observation'
+   ```
+
+   **여기서는 대조할 원본이 없다** — DB를 통째로 잃어서 복구하는 것이므로
+   드릴 때처럼 "운영 DB의 숫자와 같은가"를 볼 대상 자체가 없다. 대신 이
+   세 가지를 본다: ① `pg_restore`가 위 단계에서 에러 없이 끝났는가(에러
+   메시지가 없었으면 통과 — 4단계에서 `--no-owner --no-acl`를 빼기 때문에
+   이 체크는 이제 데이터 복원뿐 아니라 `OVERMIND_DB_USER`로의 소유권·GRANT
+   재생까지 포함한다. 이 계정은 2단계에서 이미 만들어져 있으므로 정상
+   상황이면 에러가 나지 않는다 — 만약 난다면 볼륨을 새로 만든 뒤 role 이름을
+   바꿨다는 등 계정 불일치를 의심한다), ② `count(*)`가 0이 아니고 평소 써
+   온 데이터 양과 크게 어긋나지 않는가(감으로도 된다 — 0이거나 비정상적으로
+   작으면 의심한다), ③ `max(created_at)`이 복원한 파일 이름의 타임스탬프
+   (`overmind-<UTC타임스탬프>.dump.gpg`)보다 뒤가 아니고 그 근처인가(그
+   타임스탬프보다 한참 전이면 더 오래된 백업이 조용히 섞인 것이고, 그
+   타임스탬프보다 뒤면 애초에 있을 수 없는 값이라 뭔가 잘못됐다는 뜻이다).
+   **이 조회는 부트스트랩 superuser(`$POSTGRES_USER`)로 하므로 세 체크
+   모두 소유권과 무관하게 통과한다** — superuser는 ACL 검사를 우회한다.
+   즉 여기서 통과했다고 해서 `app`이 쓰는 `OVERMIND_DB_USER`가 실제로 읽을
+   수 있다는 것을 이 조회 자체가 증명하지는 않는다. 그 증명은 ①의 "에러
+   없이 끝났는가"(소유권·GRANT 재생이 실패하지 않았는가)에 있다. 셋 다
+   정상이면 다음 단계로 간다. 하나라도 이상하면 **`app`을 올리지
+   말고** 다른 백업 파일로 4번부터 다시 시도하거나 원인을 찾는다.
+
+6. 확인이 끝난 **다음에만** `app`을 올린다:
+
+   ```bash
+   docker compose -f /opt/overmind/compose.yaml up -d app
+   ```
+
+`db`만 먼저 올리고 `app`을 최후에 올리는 것이 핵심이다 -- Flyway가 빈 스키마를
+선점하기 전에 사람이 개입할 시간을 번다.
+
+## 절대 하지 않는 것
+
+- `docker compose down -v` — 볼륨이 external이라 삭제되지 않지만, 습관으로 만들지 않는다
+- `ports: "8080:8080"` — 접두사를 빼면 Docker가 firewalld를 우회해 인터넷에 연다
+- `POSTGRES_USER`와 `OVERMIND_DB_USER`를 같은 값으로 두는 것 — 앱이 superuser로
+  접속하게 된다(스펙 §6.2 위반, `01-vector.sql`·`02-app-role.sh`의 전제가 깨짐)
+- 복원 드릴을 운영 `db` 서비스에 직접 하는 것 — 반드시 별도 컨테이너
+  (`overmind-restore-drill`)에 한다

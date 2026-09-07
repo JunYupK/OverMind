@@ -7,51 +7,668 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — Task 0~9 병합 완료, Task 10~13 구현·커밋 완료, PR #11**
-- **최근 갱신:** 2026-09-04 · Codex (T13 커밋·푸시 및 기존 PR #11 갱신)
-- **브랜치:** `codex/m0-t10-t14` (`origin/master`의 `fc7abdd`에서 시작)
-- **현재 검증:** 전체 `verify guardrails` 통과. L1 150 / L2 99 / guardrails 11건,
-  실패·오류·스킵 0건. L2에 T12 인증·권한 20건과 T13 로그 위생 7건 포함. 로컬 gitleaks는
-  미설치로 생략됐으며 실제 외부 OIDC·원격 HTTPS 검증은 이번 게이트 범위가 아니다.
+- **마일스톤:** **M0 — Task 0~14 전부 master 병합 완료. 배포 설계 플랜(T1~T9)도
+  이 브랜치에서 전부 구현 완료. 전체 브랜치 리뷰의 수정 파도(Critical 2건 +
+  Important 4건 + Minor 4건)도 적용 완료.** 남은 것은 코드가 아니라 실배포·
+  손 작업(H1~H7)·수동 스모크(`docs/harness/70-m0-smoke.md`)·B-1~B-3 결정이다
+- **최근 갱신:** 2026-09-07 · Claude Code (원격 세션) — **전체 브랜치 리뷰
+  수정 파도.** 개별 태스크 리뷰는 9개 전부 통과했지만, 전체 브랜치 리뷰가
+  **태스크 조합에서만 드러나는 Critical 2건**을 새로 찾았다.
+  1. **`internal-proxies`가 절대 매치할 수 없었다** (`application.yml`).
+     Task 3이 이 값을 "앱이 127.0.0.1에 바인딩되고 Caddy도 루프백에서
+     붙는다"는 근거로 썼는데, 그건 **호스트 쪽 게시 주소**고
+     `RemoteIpValve`가 실제로 보는 건 **컨테이너 네트워크 네임스페이스
+     안의 피어 주소**다 — 이 둘을 같다고 전제한 게 결함이었다. Task 5가
+     나중에 앱을 Docker 브리지 네트워크(`overmind-net`) 위 컨테이너로
+     올리면서 이 전제가 깨졌다: `ports: ["127.0.0.1:8080:8080"]`로 게시된
+     연결은 컨테이너 안에서 브리지 게이트웨이(`172.x.0.1`)로 보이지
+     `127.0.0.1`로 보이지 않는다. 결과: forwarded 헤더가 항상 무시되고,
+     `getScheme()`이 `http`에 고정돼 401의 `resource_metadata`와 메타데이터
+     문서의 `resource`가 `http://`를 광고 — RFC 8707 `resource` 파라미터가
+     Auth0 API Identifier와 어긋나 **디스커버리가 통째로 깨지고 Task 1~3이
+     아무것도 전달하지 못한다.** 정규식을 `172.(16-31).x.x|127.0.0.1|::1`
+     계열로 넓히고, 왜 `127.0.0.1` 전제가 거짓이 됐는지·이 확장이 보안을
+     약화시키지 않는 이유(포트가 호스트 밖으로 안 나가는 건 이 정규식이
+     아니라 compose의 `127.0.0.1:` 바인딩)를 주석에 다시 썼다.
+  2. **재해복구 런북이 앱이 못 읽는 DB를 복원했다** (`deploy/README.md`).
+     복원 드릴의 `pg_restore --no-owner --no-acl`는 드릴 컨테이너에
+     `OVERMIND_DB_USER`가 아예 없어서 필요한 플래그인데, 이 근거를
+     "모든 `pg_restore` 호출부에 같은 플래그를" 식으로 균일하게 적용한
+     이전 리뷰 지시 때문에 **운영 복구 절차에도 그대로 복사돼 있었다.**
+     운영 절차에서는 2단계에서 `02-app-role.sh`가 이미 `OVERMIND_DB_USER`를
+     만들어 둔 뒤라, `--no-owner`를 주면 Flyway가 만든 테이블
+     (`flyway_schema_history` 등)의 소유권이 전부 부트스트랩 superuser로
+     넘어가 버리고 6단계에서 `OVERMIND_DB_USER`로 붙는 `app`이 기동 직후
+     permission denied로 크래시루프에 빠진다. 5단계 검증이 superuser로
+     조회해 이걸 못 잡는다는 것도 확인. 운영 절차의 4단계에서 두 플래그를
+     뺐고(`pg_dump`가 `CREATE EXTENSION IF NOT EXISTS`를 내보내므로 확장
+     충돌 없음), 드릴과 운영 절차 사이에 "왜 반대로 하는가"를 한 문단
+     남겼고, 5단계 설명에 "이 조회는 superuser라 소유권과 무관하게
+     통과한다 — 실제 증명은 ①(에러 없이 끝남 = 소유권/GRANT 재생 성공)에
+     있다"를 덧붙였다.
+
+  **Important 4건도 같은 파도에서 접었다:**
+  - **I1** — GHCR 패키지는 레포가 public이어도 `GITHUB_TOKEN`으로 올리면
+    기본 private이다(스펙 부록 A·`ci.yml` 주석이 "레포가 public이라 익명
+    pull 가능"이라고 잘못 단정하고 있었다). 스펙 정정, `ci.yml` 주석 정정,
+    플랜 H-표에 **H7**(첫 `publish` 뒤 패키지를 Public으로 바꾸거나 박스에서
+    `read:packages` PAT로 로그인) 추가 — H1·H5보다 먼저 걸리는, 박스에서
+    가장 먼저 막히는 손 작업이라고 표시했다.
+  - **I2** — README에 0단계(체크아웃)가 없어 모든 `deploy/...` 상대경로
+    명령이 전제하는 체크아웃의 존재·위치·ref가 어디에도 안 적혀 있었다.
+    `## 0. 체크아웃` 절 신설. "배포와 롤백" 절에도, `compose.yaml`/`initdb/`가
+    릴리스에서 바뀌면 `OVERMIND_TAG` sed만으로는 `/opt/overmind/`의 사본이
+    조용히(특히 `initdb/`는 빈 볼륨에서만 도니 **증상 없이**) 낡는다는
+    경고와 `sudo cp` 보완 절차를 추가했다.
+  - **I4** — `70-m0-smoke.md` D6/D7: Critical 1이 있는 상태에서는 D7이
+    아무것도 신뢰되지 않기 때문에 트리비얼하게 통과해 운영자가 헛되이
+    초록을 찍을 수 있었다. D7이 D6 green을 전제로 하게 명시하고, D6에
+    "원인은 거의 항상 `internal-proxies`에 브리지 대역이 빠진 것이지
+    `forward-headers-strategy` 자체가 아니다 — `.*`로 넓혀 우회하면 D7이
+    무의미해진다"는 안내를 추가했다.
+  - **D13** — 가드 로그 확인 문구를 실제 스크립트 메시지 그대로 인용하게
+    바꿔, "가드가 걸렸다"와 "`: \"${VAR:?}\"` 같은 다른 이유의 exit 1"이
+    로그만 보고 구분되게 했다.
+
+  **Minor 4건:** `compose.yaml`의 `pg_isready` healthcheck에 `start_period:
+  30s` 추가하고 주석을 "유닉스 소켓 응답까지만 증명, initdb의 임시 서버도
+  통과시킬 수 있다"로 정직하게 다시 썼다(`depends_on` 쪽 주석도 같이).
+  DR 3단계의 무제한 대기 루프를 드릴처럼 100초로 상한(healthcheck 예산
+  30+12*5=90초 + 여유)했다. `backup.pass`를 `sudo install -m 0600 /dev/null`로
+  먼저 만든 뒤 `tee`로 쓰게 해 world-readable 윈도우를 없앴다.
+
+  **범위 밖으로 명시된 것은 손대지 않았다** — `GRANT CONNECT` 중복, NUL 안전성,
+  `: "${VAR:?}"` 가드 부재, `.dockerignore` 부재, 로그 로테이션 부재,
+  D2/D12의 약한 반증가능성, D-M "열려 있음" 등.
+
+  **검증:** 정규식 fuzz(요구된 5매치·5비매치 전부 통과, 아래 참조),
+  `python3 -c "import yaml; ..."`로 `compose.yaml`·`ci.yml` 파싱 확인,
+  `./gradlew guardrails` 11/11 PASS, `./gradlew test` — 아래 참조. Docker가
+  없어 `docker compose config`·실제 기동·복원 시나리오 자체는 실행 불가 —
+  README를 운영자 시점으로 정독해 논리만 재검증했다.
+
+  **CI 적신호 수정 — L2 `LogHygieneTest`가 T2의 헤더 변경을 못 따라갔다.**
+  PR #13의 `verify`가 빨갛게 났다(`integrationTest` 105건 중 1건 실패):
+  `LogHygieneTest.invalid_subject_is_401_without_logging_token_or_claims`가
+  `assertThat(response.headers().firstValue("WWW-Authenticate")).contains("Bearer")`
+  로 단언하고 있었는데, `firstValue()`는 `Optional<String>`을 반환하고 AssertJ의
+  `OptionalAssert.contains(...)`는 **부분 문자열이 아니라 값 동등성**이다. T2 전에는
+  헤더가 정확히 `"Bearer"`였으므로 통과했고, T2가 `resource_metadata="…"`를 붙이면서
+  동등성이 깨졌다. T2는 같은 형태의 `McpAuthorizationTest:73`은 고쳤지만 이건 놓쳤다 —
+  **L2라 이 컨테이너에서 돌릴 수 없어 아홉 번의 태스크 리뷰와 두 번의 브랜치 리뷰를
+  전부 통과해 CI에서야 드러난 자리다.** 단언을 `McpAuthorizationTest`와 같은 형태
+  (`orElseThrow()` 뒤 `startsWith("Bearer ")` + `resource_metadata="` + 메타데이터 경로)로
+  바꿔, 값 동등성 사고가 아니라 T2가 실제로 추가한 동작을 검사하게 했다.
+  `@Tag("integration")` 테스트 전체를 훑어 같은 형태의 낡은 단언이 더 없는지 확인했다 —
+  없다. `guardrails` 11/11, `test` 159/159 PASS. L2 판정은 CI가 한다.
+
+  **재리뷰 후속(같은 파도, 별도 커밋).** 수정 파도를 독립 재리뷰해 두 건을
+  더 접었다. ① `ci.yml`과 스펙이 GHCR 공개 전환 손 작업을 **H1**으로 가리키고
+  있었다 — H1은 Auth0 테넌트 설정이고 새로 추가한 건 **H7**이다(스펙 쪽은
+  "부록 B에 붙는"이라고도 했는데 부록 B는 미확정 *값*의 표이지 손 작업 표가
+  아니다). 둘 다 H7과 플랜 파일 경로로 정정. ② `internal-proxies`가 아직
+  `192.168.0.0/16`을 빠뜨리고 있었다 — Docker의 기본 `default-address-pools`는
+  `172.17.0.0/12`(size 16) **하나가 아니라** `192.168.0.0/16`(size 20)이 뒤에
+  붙은 둘이라, 앞 풀이 소진되거나 `daemon.json`이 손대져 있으면 `overmind-net`이
+  192.168 대역을 받아 **Critical 1과 완전히 같은 무증상 실패**(`http://` 광고)가
+  재현된다. 대역을 추가하고, 넓히는 것이 확률적 해법임을 주석에 명시했으며
+  (결정적 해법은 `ipam.config.subnet` 고정 — 박스의 기존 네트워크를 몰라
+  충돌 위험을 못 재서 지금은 택하지 않았다), 스모크 D6에 **추측 대신 측정**을
+  넣었다: `docker inspect -f '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}'`로
+  app 컨테이너가 실제로 보는 게이트웨이를 뽑아 정규식이 그 값을 덮는지 확인하고,
+  두 대역 어디에도 없으면 정규식을 더 넓히지 말고 subnet을 고정하라고 적었다.
+
+  **검증(재리뷰):** `RemoteIpValve` 바이트코드로 `Matcher.matches()`(부분 매치
+  아님)와 `setInternalProxies`가 `/`를 포함하지 않는 값은 정규식으로 컴파일하며
+  CIDR 기본집합(`10/8`·`192.168/16`·`100.64/10`…)을 `null`로 지운다는 것,
+  `checkIsCidr(null, …)`가 `false`를 반환한다는 것까지 확인했다 — 즉 이 정규식이
+  유일한 신뢰 판정이고 CIDR 폴백은 없다. 정규식 fuzz 9매치·10비매치 전부 통과
+  (앵커 확인용 `192.168.0.1.evil`·`evil192.168.0.1` 포함). `./gradlew guardrails`
+  11/11, `./gradlew test` 159/159 PASS.
+
+  이전 갱신(같은 날) — Task 9(결정을 등재하고
+  스펙을 정정한다, 이 플랜의 마지막 태스크) 구현. `docs/arch/decisions.md`
+  "확정"에 D-H~D-L을 브리프 그대로, 그리고 브리프에 없던 **D-N**(DB 계정을
+  부트스트랩 superuser와 앱 전용 role로 분리)·**D-O**(시크릿 파일을 `db.env`/
+  `app.env`로 분리하고 `db`에서 `${...}` 치환을 뺌) 두 건을 추가했다 — 둘 다
+  Task 5 리뷰가 실측으로 찾아 계획에 없던 채로 만든 결정이라 별도로 기록해야
+  한다는 지시를 따랐다. **D-M**(`RequiredSettings.Validation`이 중복 방어라는
+  판단)은 여전히 실행으로 확인되지 않아 "열려 있음"에 남겼다 — 배포 스모크
+  D4가 확인·반증한다. 배포 스펙(`2026-09-04-overmind-deploy-design.md`)도
+  여러 곳을 정정했다: **§7.2**는 G-1이 실측 결과 200(403도 404도 아님)이었고
+  `OAuth2ProtectedResourceMetadataFilter`가 `AuthorizationFilter`보다 앞에
+  설치돼 애초에 도달하지 못했다는 것으로 다시 쓰고, "없는 기능"이 아니라
+  "이미 켜져 있으면서 틀린 값을 광고하는 기능"이었다는 더 정확한 서술로
+  바꿨다. G-4를 표에 추가했다. **§6.2·§6.3·§12-3**(§12-3은 지금은
+  `70-m0-smoke.md`의 D3)은 두 계정(부트스트랩 superuser/`OVERMIND_DB_USER`)
+  모델을 설명하고, 이 모델이 갖춰지기 전에는 §6.3의 근거(Flyway가
+  non-superuser로 실행된다)와 그 검사(initdb 없이 띄우면 권한 오류가 난다)
+  둘 다 거짓이었다는 것을 남겼다. **§5.4·§9.1~9.4·
+  §10.3·§11**은 `overmind.env` 단일 파일 + `${...}` 치환 설계가 `db.env`/
+  `app.env` 이원화로 바뀐 이유(README를 문자 그대로 따라도 `db`의 `${...}`
+  치환이 빈 문자열이 되어 스택이 영원히 안 뜨는 결함을 리뷰가 재현했다)를
+  기록했다. **§12**는 표 자체는 손대지 않고, `70-m0-smoke.md`의 D1~D13이
+  이제 운영 절차라는 정정 문구만 앞에 추가해 이중 유지보수를 피했다.
+  `./gradlew guardrails` 11/11 PASS.
+  이전 갱신(같은 날) — Task 8(배포 검증을
+  스모크 절차에 넣기) 구현: `docs/harness/70-m0-smoke.md`에 기존 M0
+  10항목 표는 그대로 두고, `## 실패했을 때` 앞에 별도 표(D1~D13)를
+  붙였다. 브리프는 Task 1~7 이전 시점 기준이라 절반 가까이(D3·D4·D5·D6·
+  D10) 틀린 전제로 쓰여 있어 실제 구현에 맞게 다시 썼다 — 상세는 아래
+  진행 중 참조. D13(`POSTGRES_USER`=`OVERMIND_DB_USER` 가드가 실제로
+  기동을 막는지)은 브리프에 없던 항목을 새로 추가했다. 확인일·확인자
+  칸은 두 표 다 그대로 비워 뒀다. `./gradlew guardrails` 11/11 PASS.
+  이전 갱신(같은 날) — Task 7 리뷰 2라운드 반영: "실제 복구 순서" 절의
+  4·5단계가 `...`와 "위 드릴과 같은 방식으로" 같은 참조로 끝나 있어,
+  운영자가 드릴의 `-U drill -d overmind`를 손으로 운영 DB에 옮겨 적어야
+  하는 위험한 구조였다. 두 단계를 완결된 복붙 명령으로 바꾸고(db.env를
+  소스하는 줄부터 `pg_restore`까지 전부 그 자리에 씀), 5단계 검증은
+  "원본과 대조"가 실제 재해에서는 대조할 원본 자체가 없다는 걸 명시한
+  뒤 대안 점검 3가지(에러 없음·행 수가 0이 아님·`max(created_at)`이
+  백업 파일명 타임스탬프 근처)로 바꿨다. 드릴과 복구 순서 양쪽에 서로의
+  존재와 차이(던져버릴 `drill` 계정 vs 운영 `db.env` 계정)를 알리는
+  문장을 한 줄씩 남겼다. 그 이전 갱신(같은 날, 리뷰 1라운드) — Task 7
+  리뷰 반영: `deploy/README.md`의 복원 드릴을 세 군데 고쳤다(`--no-acl`
+  추가, `sleep 10`→`pg_isready` 폴링, 실제 복구 순서 신설). 그 이전
+  갱신(같은 날) — Task 7(암호화 백업) 구현: `deploy/backup/overmind-
+  backup.sh` + systemd `.service`/`.timer`, `deploy/README.md`에 설치·
+  박스 밖 반출·복원 드릴 절차 추가. 브리프가 Task 5 이전 파일 구조
+  (`overmind.env` 단일 파일)를 참조하고 있어 실제 구조(`db.env`/
+  `app.env` 이원화)에 맞게 다시 썼다
+- **브랜치:** `claude/deploy-design` (`origin/master`의 `b0ebb3d`에서 시작)
+- **현재 검증:** 이 브랜치에서 T1~T9이 전부 구현·커밋됐다(T7~T9은 코드가 아니라
+  배포 자산·문서라 `guardrails`만 통과하면 되고, 아래는 T5 리뷰 이력이다).
+  T5는 최초 구현이 리뷰에서
+  Critical 2건(계정 모델 미추적, `.env` 덮어쓰기)으로, 1차 대응이 다시
+  Important 1건(SQL 문자열 접합 취약성)으로 반려됐다. **독립 리뷰가 구현
+  자체는 승인**했지만, `POSTGRES_USER`=`OVERMIND_DB_USER`로 두면 세 파일의
+  경고 산문을 무시해도 아무 계층도 에러를 내지 않고 앱이 조용히 superuser로
+  붙는 경로를 찾아 3차 수정을 요청했다. 3차까지 재검증한 것:
+  `bash -n`(02-app-role.sh 문법), `grep -nE '^[A-Z_]+=.+'
+  deploy/*.env.example`(두 env 예시 전부 매치 0건), `./gradlew guardrails`
+  (`-PbaseRef=origin/master`, 11/11 PASS), 그리고 새 가드를 **직접 실행해서**
+  같은 값이면 exit 1 + 안내 메시지, 다른 값이면 통과(psql 호출까지 도달)를
+  둘 다 실측으로 확인했다("가드를 본 적 없으면 가드가 아니다"는 이 브랜치의
+  기존 규율을 그대로 따름). **로컬에 gitleaks가 없어 `gitleaksScan`은 계속
+  생략된다**("통과"가 아니라 "안 돌았다") — 값이 전부 비어 있음은 grep
+  실측으로 대신했다. Docker가 없어 `docker build`·`docker compose config`·
+  실제 기동·psql 자체의 파싱 결과는 실행하지 못했다 — 계정 분리·역할
+  GRANT·quoting 수정·이번 가드가 실제 PostgreSQL 서버 앞에서도 그대로
+  작동하는지는 이 환경에서 실측 불가다(가드 자체는 셸 로직이라 실행
+  확인했지만, `psql` 이후 단계는 여전히 미확인). L2(`integrationTest`)는
+  Testcontainers 초기화 단계에서 실패한다(기존 제약, 이번 변경과 무관).
+  게이트 최종 판정은 CI가 한다
 
 ### 진행 중
 
-- **Task 10은 `360024b`, Task 11은 `6aa56d4`, Task 12는 `1c9544a`로 커밋했다.**
-  T11은 `remember_memory`·`recall_memory`의 실제 유스케이스/DB 연결, 입력 검증,
-  응답 계약과 안전한 오류 매핑을 구현했다. 별도로 보존한 staging 스냅샷에서
-  L1 114 / L2 72 / guardrails 11건을 다시 통과한 뒤 커밋했다.
-  T12는 필수 설정 검증, JWT 서명·issuer·audience·subject·시간 검증과 도구별 scope를
-  구현했다. 유효·변형 토큰을 실제 HTTP/MCP로 보내 저장 부작용과 매 요청 권한 검사를
-  확인했다. 두 태스크는 별도 커밋이며 T12까지의 PR #11 CI는 통과했다. T14는 아직 착수하지 않았다.
-- **Task 13은 이 로그를 포함한 커밋으로 마무리했다.** 실제 HTTP·JWT·MCP·DB를
-  거치는 7개 시나리오에서 root TRACE로 content/source/key/token/claim/cursor 누출을
-  검사한다. Tomcat/MCP/PostgreSQL/Hibernate/Security 진단 로거를 제한했고,
-  `LogCapture`는 동시 기록 중 안전한 스냅샷을 만든다. 임시 content INFO 로그를 넣자
-  테스트가 INV-02 위반으로 실패했으며 해당 코드는 제거했다. T13 커밋에
-  설정·테스트·공용 JWT 픽스처 이동·plan·invariants와 이 로그를 함께 포함했다.
-- **Task 8은 PR #9(`a21b6ac`), Task 9는 PR #10(`fc7abdd`)으로 master에 병합됐다.**
-  - 스펙 `docs/superpowers/specs/2026-09-02-overmind-m0-design.md` (사용자 승인)
-  - 플랜 `docs/superpowers/plans/2026-09-02-overmind-m0.md` — Task 0~14
-  - Spring Boot 4.1.1 / Hibernate 7.4.5.Final / jakarta.persistence 3.2.0 /
-    Flyway 12.4.0 / Spring Framework 7.0.9. 상세는 task-0-report.md와 결정 문서 참조.
+- **배포 설계 스펙을 썼다** — `docs/superpowers/specs/2026-09-04-overmind-deploy-design.md`.
+  사용자와 brainstorming(architectural 경로)으로 진행했고 섹션별 승인을 받았다.
+  대상은 사용자의 기존 Oracle Cloud Ampere A1(aarch64, Oracle Linux 8, Docker,
+  Caddy). flight-friend를 종료하고 교체한다. 인가 서버는 Auth0 무료 티어(D-J).
+- **구현 플랜을 썼다** — `docs/superpowers/plans/2026-09-04-overmind-deploy.md`, 태스크 9개.
+  T1~T3이 코드(`src/**`), T4가 감시 경로, T5~T7이 배포 자산·CI·백업, T8~T9이 문서다.
+  **T4를 T5보다 먼저 한다** — 감시 경로를 먼저 넓혀야 `deploy/`의 첫 커밋부터 가드가 덮는다.
+  코드가 아닌 손 작업 6건(H1~H6)을 따로 뽑았다. **H5(`nproc`/`free -m`)가 T5의
+  `mem_limit`을 막고, H1(Auth0 테넌트 설정)이 T1~T3의 실효를 막는다.**
+- **플랜을 쓰다가 스펙의 주장 하나가 흔들렸고 새 결함 하나를 찾았다.**
+  `OAuth2ProtectedResourceMetadataFilter`를 바이트코드까지 열어본 결과:
+  - **G-1이 불확실하다.** 이 필터는 `addFilterBefore(..., AbstractPreAuthenticatedProcessingFilter.class)`로
+    설치되어 `AuthorizationFilter`보다 앞이다. `anyRequest().denyAll()`이 삼킨다고
+    스펙에 단정했는데 근거가 약했다. 플랜 T1 Step 2를 **결과를 모르는 검사**로 만들어
+    403인지 404인지 실측하게 했다
+  - **`tls_client_certificate_bound_access_tokens`의 기본값이 `true`다** (바이트코드 `iconst_1`).
+    OverMind는 mTLS를 쓰지 않으므로 켜둔 채면 거짓 메타데이터를 광고한다. 꺼야 한다
+  - **G-4 신규 — `resource`가 요청 URL에서 나온다.** `resolveResourceIdentifier`가
+    `UrlUtils.buildFullRequestUrl`을 쓴다. Caddy 뒤에서 앱은 `http://127.0.0.1:8080`을
+    보므로 그대로면 메타데이터가 루프백을 광고하고 **디스커버리가 통째로 깨진다.**
+    T3이 `forward-headers-strategy: native` + `internal-proxies` 루프백 제한으로 다룬다
+- **조사에서 나온 실증 사실 4건** (전부 1차 근거 확인, 스펙 §부록 A):
+  - **pgvector는 `trusted` 확장이 아니다** — `vector.control`에 `trusted = true`가 없다.
+    `CREATE EXTENSION vector`는 superuser를 요구하는데 `V1__enable_pgvector.sql`은
+    앱 계정으로 실행된다. **L2는 이걸 구조적으로 못 잡는다** — `PostgreSQLContainer`의
+    기본 계정이 컨테이너 안에서 superuser라 항상 통과한다. test/prod parity 구멍이다
+  - **Spring Security 7.1.1이 RFC 9728을 내장하고 있다** — `OAuth2ProtectedResourceMetadataFilter`,
+    `ProtectedResourceMetadataConfigurer` DSL, `BearerTokenAuthenticationEntryPoint`의
+    `resource_metadata` 문자열을 jar에서 직접 확인했다. 디스커버리 엔드포인트를
+    손으로 만들 필요가 없다
+  - **의존성 잠금이 없다** — lockfile·verification-metadata·`dependencyLocking` 전부 부재.
+    그래서 박스에서 재빌드하면 CI가 검증한 바이트와 갈라질 수 있다(D-H의 근거)
+  - **Claude는 OAuth 요청에 `resource`만 보내고 `audience`를 보내지 않는다** —
+    Auth0는 `audience` 없이는 opaque 토큰을 발급하므로 `NimbusJwtDecoder`가 파싱하지
+    못한다. 테넌트 Default Audience 설정이 필요하다. 배포 1순위 함정
+- **아직 실증되지 않은 판단 (D-M)** — `RequiredSettings.Validation`(`@Profile("production")`)은
+  중복 방어로 보인다. `SecurityConfig.jwtDecoder`가 싱글턴 빈이라 기동 시
+  `requireComplete()`가 동기 호출되므로 프로파일과 무관하게 실패해야 한다.
+  **코드 읽기에 근거한 추론이며 실행으로 확인하지 않았다.** `docs/harness/70-m0-smoke.md`의 D4가 확인 또는 반증한다
+- **플랜 T1을 구현했다 — RFC 9728 protected resource metadata 활성화.** `SecurityConfig
+  .securityFilterChain`에 `RequiredSettings`를 받아 `protectedResourceMetadata`
+  커스터마이저로 `authorization_servers`·`scopes_supported`(`memory:read`,
+  `memory:write`)를 채우고, 프레임워크 기본값 `tls_client_certificate_bound_access_tokens
+  =true`를 껐다. **G-1은 틀렸다는 것이 실측으로 확인됐다** — 커스터마이저를 넣기 전
+  실패한 테스트의 실제 응답 상태 코드는 **200**이었다(403도 404도 아니었다).
+  `OAuth2ProtectedResourceMetadataFilter`가 `AuthorizationFilter`보다 앞에 설치되어
+  있어 `anyRequest().denyAll()`이 이 경로에 전혀 도달하지 않는다 — 필터는 이미 기본
+  클레임으로 200을 반환하고 있었고, 테스트가 실패한 이유는 `authorization_servers`
+  등 커스텀 클레임이 아직 없었기 때문이다. 그래서 `permitAll` 매처는 추가하지
+  않았다(불필요한 노출면이었을 것). `ProtectedResourceMetadataTest`(L1) 2건 추가.
+- **플랜 T2를 구현했다 — `WWW-Authenticate`에 `resource_metadata`를 싣는다(G-2).**
+  `McpHttpErrors.unauthenticated`가 헤더를 `"Bearer"`로 통째로 덮어써 프레임워크가
+  붙였을 `resource_metadata` 파라미터를 지우고 있었다 — 디스커버리 체인의 실질적
+  차단 지점이었다. `ResourceIdentity.metadataUrl(HttpServletRequest)`를 새로 만들어
+  요청 URL로부터 RFC 9728 메타데이터 문서의 절대 URL을 만들고(프레임워크 필터가
+  `resource` 클레임을 만드는 것과 같은 규칙을 반대로 적용), `unauthenticated`가
+  이를 헤더에 싣게 했다. 헤더에는 URL만 있다 — `error`·`error_description`은
+  넣지 않는다(C-6). **브리프와 다르게** `ResourceIdentity`는 `com.overmind.config`가
+  아니라 `com.overmind.adapter.in.mcp`(McpHttpErrors와 같은 패키지)에 뒀다 —
+  `config`를 임포트하는 어댑터가 이 저장소에 하나도 없어, 브리프대로 하면
+  `config ↔ adapter.in.mcp` 순환이 생겼을 것이다. `ProtectedResourceMetadataTest`(L1)
+  2건 추가(총 4건) — 파라미터 존재 확인 + 실패 사유 비노출 회귀 방지.
+  `McpAuthorizationTest.an_unauthenticated_call_is_rejected`(L2)의 기존 단언을
+  `"Bearer"` 존재만 보던 것에서 `resource_metadata=` + 메타데이터 경로까지 보도록
+  강화했다. **썩힘 실험:** 헤더 줄을 `"Bearer"`로 되돌리자 L1 신규 테스트가 정확히
+  예상대로 실패했다(`resource_metadata=`를 못 찾음). **L2는 이 환경에 Docker가 없어
+  실행해 확인하지 못했다** — 되돌린 헤더로는 강화된 문자열 단언이 정적으로도
+  실패할 수밖에 없다(`"Bearer"`가 `"resource_metadata=\""`를 포함할 수 없음),
+  하지만 이는 코드를 읽고 판단한 것이지 실행으로 확인한 것이 아니다.
+- **플랜 T3을 구현했다 — 리버스 프록시 뒤에서 공개 URL을 올바르게 만든다(G-4).**
+  `ResourceIdentity.metadataUrl`과 프레임워크의 `resolveResourceIdentifier`
+  둘 다 `UrlUtils.buildFullRequestUrl(request)`를 쓴다. Caddy 뒤에서 앱은
+  `http://127.0.0.1:8080`을 보므로, 그대로 두면 메타데이터의 `resource`
+  클레임과 401 헤더의 `resource_metadata`가 모두 루프백 주소를 평문으로
+  광고해 디스커버리가 통째로 깨진다. `application.yml`에 `server.
+  forward-headers-strategy: native`(Tomcat `RemoteIpValve`)와 `server.tomcat
+  .remoteip.internal-proxies`를 루프백 정규식으로 넣었다. FRAMEWORK
+  (`ForwardedHeaderFilter`)과 달리 NATIVE는 신뢰할 원격 주소를 좁힐 수 있다 —
+  아무나 보낸 `X-Forwarded-Host`를 반영하면 메타데이터를 오염시킬 수 있다.
+  **Step 2 실측:** 신규 테스트(`the_public_url_follows_what_the_container
+  _reports_not_a_hardcoded_host`)는 `application.yml` 변경 **전에 이미 PASS**했다
+  — `ResourceIdentity.metadataUrl`이 `HttpServletRequest`의 scheme/host/port를
+  그대로 읽고, `MockMvcRequestBuilders`가 그 값을 직접 세팅하기 때문에 이
+  테스트는 `application.yml`을 전혀 거치지 않는다. 브리프가 예견한 "이미
+  올바른 경우"였다 — 회귀 방지로 남기고 Step 3(설정 변경)만 별도로 진행했다.
+  `ProtectedResourceMetadataTest`(L1) 1건 추가(총 5건).
+  **썩힘 확인(Step 5)의 한계를 숨기지 않는다:** `internal-proxies`를 `.*`로
+  바꾸고 `./gradlew verify`를 돌려도 L1 5건은 그대로 PASS했다(`test` 태스크
+  총 159건, 실패 0) — **이것은 통과가 아니라 이 게이트의 사각지대다.**
+  `MockMvc`는 서블릿 컨테이너를 거치지 않아 `RemoteIpValve`가 아예 존재하지
+  않으므로, `internal-proxies`가 무엇이든 이 테스트는 구분하지 못한다.
+  신뢰 경계 자체는 어떤 L1 테스트로도 검증할 수 없다 — 배포 스모크
+  (`docs/harness/70-m0-smoke.md`의 D7, Task 8이 추가)가 실측한다. 값은 루프백으로 되돌렸다.
+  이 한계를 "이월된 결함"에 등재했다. `integrationTest`(L2)는 이 환경에
+  Docker가 없어 `Testcontainers` 초기화 단계에서 실패한다 — 이번 변경과
+  무관한 기존 제약이다.
+- **플랜 T4를 구현했다 — 감시 경로에 `deploy/`와 `Dockerfile`을 추가했다.**
+  `LogUpdatedGuardTest`의 `WATCHED_PREFIXES`/`WATCHED_FILES`(진실의 원천)에
+  두 항목을 추가한 뒤, **사본(`AGENTS.md` 규칙 3, `40-guardrails.md`)을 고치기
+  전에 먼저 `./gradlew guardrailTest -PbaseRef=origin/master`를 돌려 대조 검사가
+  실제로 갈라짐을 잡는지 확인했다.** 기대대로 `WatchedPathSyncGuardTest`의
+  `agents_md_copy_matches_the_guard`와 `guardrails_doc_copy_matches_the_guard`가
+  **둘 다 FAILED** — 사본에 `deploy/`·`Dockerfile`이 없다는 것이 정확히 잡혔다.
+  그 다음 두 사본을 고치고 다시 돌려 **11건 전부 PASS**를 확인했다
+  (`[floor] guardrailTest — 테스트 11건 실행 확인`). 기존 원소·순서는 건드리지 않았다.
+- **플랜 T5를 구현했다 — 배포 자산 6종.** `Dockerfile`(RUN 없음, 숫자 UID
+  10001, `-XX:MaxRAMPercentage=60`), `deploy/initdb/01-vector.sql`(pgvector를
+  postgres superuser로 미리 생성 — Flyway V1은 앱 계정이라 trusted 아닌 확장을
+  못 만든다), `deploy/compose.yaml`, `deploy/overmind.env.example`,
+  `deploy/Caddyfile.example`, `deploy/README.md`를 브리프 그대로 만들었다.
+  **`mem_limit`은 두 서비스 모두 주석으로 남겼다** — `nproc`/`free -m`으로 실측한
+  값이 아직 없어서다(스펙 §부록 B, H5). 추측한 숫자를 넣지 않았다; README에
+  "채우기 전에는 운영에 쓰지 않는다"고 명시했다. `app` 서비스 포트는
+  `127.0.0.1:8080:8080`(C-1), `db`에는 `ports`가 아예 없다(C-2), 볼륨은
+  `external: true`다 — 셋 다 `python3 -c "import yaml; ..."`로 파싱해 구조적으로
+  확인했다. `overmind.env.example`의 10개 키 전부 `=` 뒤가 비어 있음을
+  `grep -E "^[A-Z_]+=.+"`로 실측했다(매치 0건, C-9). 스코프는 `memory:read`·
+  `memory:write` 둘뿐이고 `deploy/`·`Dockerfile` 어디에도 `memory:delete`가
+  없음을 grep으로 확인했다. **로컬에 gitleaks가 없어 `gitleaksScan`이
+  생략됐다** — 이 커밋의 실제 gitleaks 판정은 CI가 한다.
+- **T5가 리뷰에서 Critical 2건으로 반려됐다 — 계정·비밀 모델을 끝까지
+  추적하지 않은 게 원인이었다.** 리뷰가 실측으로 확인한 것:
+  1. `deploy/README.md`의 "최초 1회"가 `/opt/overmind/.env`를
+     `OVERMIND_TAG=` 한 줄로 **덮어써서** `compose.yaml`의 `${POSTGRES_DB}`
+     등 `${...}` 치환이 전부 빈 문자열이 됐다 — postgres 엔트리포인트가 빈
+     `POSTGRES_PASSWORD`에서 하드 실패하고, `db`가 healthy가 안 되니
+     `app`도 `depends_on: service_healthy`에 막혀 영영 못 뜬다.
+  2. `overmind.env.example`이 `OVERMIND_DB_USER`=`POSTGRES_USER`로 쓰라고
+     시켰는데, postgres 공식 이미지는 `POSTGRES_USER`를 `initdb --username`으로
+     **클러스터 superuser**로 만든다 — 그러면 앱이 superuser로 접속하게 되어
+     스펙 §6.2("앱 계정 하나를 쓴다. superuser가 아니다")를 정면으로 어긴다.
+     부수 결과: `01-vector.sql`의 기존 주석이 설명하는 메커니즘(non-superuser
+     Flyway 계정)이 이 설계 아래서는 실제로 존재하지 않았고, 배포 스모크
+     D3(initdb 없이 띄워 Flyway가 권한 오류로 실패하는 것을 본다)는 superuser가
+     그 오류에 아예 안 걸리므로 재현 불가였다.
+- **위 둘을 하나로 고쳤다 — 부트스트랩 superuser와 앱 역할을 분리하고
+  `${...}` 치환을 DB 비밀에서 완전히 뺐다.** `overmind.env.example`을
+  지우고 `deploy/db.env.example`(`POSTGRES_DB`/`POSTGRES_USER`/
+  `POSTGRES_PASSWORD` + `OVERMIND_DB_USER`/`OVERMIND_DB_PASSWORD`, 두 계정이
+  달라야 한다고 명시)과 `deploy/app.env.example`(앱이 읽는 7개 변수,
+  `OVERMIND_DB_URL`은 반드시 `db:5432`를 쓰라는 안내 추가)로 나눴다 — 둘 다
+  모든 값이 `=` 뒤에 비어 있다. `compose.yaml`의 `db`에서 `${...}` 3종
+  `environment:` 블록을 지우고 `env_file: /etc/overmind/db.env`로 바꿨다
+  (healthcheck의 `$$POSTGRES_USER`/`$$POSTGRES_DB`는 컨테이너 안 실제
+  환경변수를 그대로 읽으므로 이스케이핑 변경 없이 그대로 동작함을 확인).
+  `app`의 `env_file`은 `/etc/overmind/app.env`로 이름만 바꿨다. 그 결과
+  `/opt/overmind/.env`에는 이제 `OVERMIND_TAG` 하나만 있으면 되므로,
+  README가 그 줄을 쓰는 기존 동작이 (버그가 아니라) 정확한 동작이 됐다.
+  `deploy/initdb/02-app-role.sh`를 새로 추가 — `01-vector.sql` 다음 순서로
+  postgres superuser로 실행되어 `OVERMIND_DB_USER`를
+  `NOSUPERUSER NOCREATEDB NOCREATEROLE`로 만들고(`\gexec`로 idempotent),
+  `CONNECT`와 `public` 스키마 `USAGE, CREATE`(PG15+ 기본 미부여라 필수)를
+  준다 — 비밀번호를 echo하지 않는다. `01-vector.sql`의 주석을 이 스크립트를
+  가리키도록 고쳐, 지금은 실제로 존재하는 메커니즘을 설명하게 했다.
+  `deploy/README.md`의 "최초 1회"를 두 비밀 파일을 만드는 절차로 바꾸고
+  "첫 기동" 절을 새로 추가해 처음부터 끝까지 그대로 따라 하면 실제로
+  기동되게 했다 — 앱 역할은 **빈 볼륨 최초 기동에서 딱 한 번만** 만들어지고
+  기존 볼륨에는 다시 돌지 않는다는 것도 명시했다. "절대 하지 않는 것"에
+  `POSTGRES_USER`=`OVERMIND_DB_USER` 항목을 추가했다. **Docker가 없어 실제
+  기동·역할 생성·GRANT 효과는 이 환경에서 실측하지 못했다** — YAML 구조,
+  `bash -n` 문법, env 값 공백만 정적으로 확인했다.
+- **1차 대응이 재리뷰에서 Important 1건으로 다시 걸렸다 — `02-app-role.sh`가
+  role/password를 셸에서 SQL 문자열로 접합하고 있었다.** 값은 공격이 아니라
+  운영자가 `db.env`에 직접 쓴 것이지만, 그 값에 작은따옴표나 큰따옴표가
+  하나만 있어도 SQL 리터럴·식별자가 그 자리에서 깨진다 — `ON_ERROR_STOP=1`
+  + `set -Eeuo pipefail`이 즉시 컨테이너 초기화를 중단시키고, 볼륨이
+  external이라 재시도도 손으로 지우고 다시 만들어야 하는, 정확히 한 번만
+  도는 경로다. **고쳤다:** `psql -v role=... -v pw=... -v db=...`로 값을
+  psql 변수로만 넘기고, SQL 쪽은 `format('CREATE ROLE %I ... PASSWORD %L',
+  :'role', :'pw')`처럼 `%I`(식별자)·`%L`(리터럴)로 이스케이핑을 PostgreSQL에
+  맡겼다. 헤레독 구분자를 `<<-'EOSQL'`(따옴표 있음)로 바꿔 셸이 안의 `$`를
+  아예 건드리지 않게 했다. `GRANT` 두 줄도 같은 방식(`SELECT format(...)
+  \gexec`)으로 바꿨다. **셸 확장 규칙만 떼어내 직접 증명했다** — 값에
+  `p'w"d`(작은따옴표+큰따옴표)를 넣고 예전 헤레독과 새 헤레독을 각각 `cat`으로
+  펼쳐 보니, 예전 형태는 `PASSWORD ''p'w"d'''`처럼 SQL 문자열이 중간에서
+  끊어지는 것이 그대로 보였고, 새 형태는 `:'role'`/`:'pw'` 자리가 전혀
+  건드려지지 않은 채로 나왔다(셸이 손대지 않았다는 뜻 — psql이 안전하게
+  치환한다). 식별자 쪽(역할 이름에 큰따옴표)도 같은 방식으로 재현해 예전
+  형태만 깨짐을 확인했다. `deploy/db.env.example`에 `OVERMIND_DB_PASSWORD`
+  생성 힌트(`openssl rand -base64 32` — 따옴표 문자를 안 만든다)를
+  추가했다(벨트+브레이스, 진짜 수정을 대체하지 않음). **여전히 psql/실제
+  PostgreSQL 서버가 이 SQL을 어떻게 파싱하는지는 이 환경에서 실측하지
+  못했다** — 셸 확장 단계까지만 증명했다.
+- **독립 리뷰가 구현 자체는 승인했지만, silent-failure 경로 하나를 새로
+  찾아 3차 수정을 요청했다.** `POSTGRES_USER`=`OVERMIND_DB_USER`로 두면:
+  ① postgres 엔트리포인트가 그 이름을 클러스터 superuser로 만들고,
+  ② `02-app-role.sh`의 `WHERE NOT EXISTS`가 "이미 있다"고 보고
+  `CREATE ROLE ... NOSUPERUSER`를 조용히 건너뛰고, ③ 두 `GRANT`는 이미
+  전권을 가진 그 역할에 별 의미 없이 성공하고, ④ 앱은 결국 superuser로
+  붙는다 — **어느 계층도 에러를 내지 않는다.** README·db.env.example·
+  app.env.example의 "달라야 한다" 경고는 산문일 뿐이라 이 경로를 전혀
+  막지 못했다. 이 두 계정 분리를 만든 이유였던 바로 그 Critical이 조용히
+  재현되는 구멍이었다. **고쳤다:** `02-app-role.sh`의 네 `: "${VAR:?...}"`
+  가드 다음, `psql` 호출 **이전**에 `if [ "$POSTGRES_USER" = "$OVERMIND_DB_USER" ];
+  then ... exit 1; fi`를 추가했다 — 메시지는 한국어로 두 변수 이름과
+  이유(§6.2 위반)를 명시한다. `WHERE NOT EXISTS`가 왜 이 검사를 대신할
+  수 없는지(이름이 같으면 그 자체가 "이미 존재"로 보여 조용히 통과한다)를
+  가드 바로 위 주석에 남겼다. `: "${VAR:?...}"` 스타일은 unset과 빈 문자열
+  둘 다에서 발동하는 것이 맞는 동작임을(네 값 모두 빈 문자열이면 무의미하다)
+  확인했고, 새 가드가 `psql` 호출보다 앞에 있음을 소스 순서로 확인했다.
+  **가드를 실제로 실행해서 두 결과를 다 봤다:** 같은 값(`overmind`/`overmind`)을
+  주고 전체 스크립트를 돌리자 `exit code: 1`과 5줄 안내 메시지가 정확히
+  나왔고, psql은 아예 호출되지 않았다. 다른 값(`postgres`/`overmind_app`)을
+  주자 가드를 통과해 실제로 `psql`을 불렀고, 이 환경에 PG 서버가 없어
+  `connection ... failed`로 실패했다 — **가드 통과 자체는 확인됐고, 그 뒤의
+  실패는 Docker 부재라는 이미 알려진 제약이지 가드 문제가 아니다.** 가드
+  섹션만 떼어낸 사본으로도 같은 두 결과(exit 1 / 통과)를 재현해 psql 유무와
+  무관하게 가드 로직만 검증했다.
+- **플랜 T6을 구현했다 — CI가 이미지를 만들어 GHCR에 올린다.**
+  `.github/workflows/ci.yml`의 `guardrails` 잡 뒤, `evaluation` 잡 앞에
+  `publish` 잡을 추가했다. **`needs: [verify, guardrails]`**가 이 잡의
+  전제 전부다 — 두 게이트가 빨간 커밋은 이미지가 아예 만들어지지 않아,
+  박스가 pull하는 바이트가 곧 CI가 검증한 바이트가 된다(D-H). 이 프로젝트에
+  의존성 잠금이 없다는 사실(T5에서 이미 확인)이 재빌드 대신 CI 단일 빌드를
+  택한 이유다. `platforms: linux/amd64,linux/arm64`로 멀티아치를 만든다 —
+  러너는 amd64인데 박스는 aarch64(Oracle Ampere A1)이고, jar는 아키텍처
+  중립이지만 `eclipse-temurin:21-jre` 베이스 레이어는 아니라서 그냥
+  빌드하면 ARM에서 안 돈다. `Dockerfile`에 `RUN`이 하나도 없어(T5, 숫자
+  UID) 이 멀티아치가 QEMU 에뮬레이션 없이 만들어진다 — 그래서 `Dockerfile`은
+  건드리지 않았다. `if: github.event_name == 'push' && github.ref ==
+  'refs/heads/master'`로 push 외 이벤트(PR, schedule, workflow_dispatch)에서는
+  잡 자체가 스킵된다. 태그는 `ghcr.io/junyupk/overmind:${{ github.sha }}`가
+  주 태그, `:latest`는 편의용 포인터로만 같이 올린다 — 박스가 실제로 소비하는
+  `OVERMIND_TAG`는 커밋 SHA다. 인증은 `secrets.GITHUB_TOKEN`(`packages:
+  write`)만 쓴다 — 레포가 public이라 박스 쪽 pull에는 PAT가 필요 없다.
+  **`Dockerfile`·`build.gradle.kts`·`src/**`는 건드리지 않았다** —
+  `./gradlew bootJar && ls -la build/libs/`로 실측한 결과 `overmind-
+  0.0.1-SNAPSHOT.jar` 단 하나만 나왔고(`-plain.jar` 없음), 기존 `Dockerfile`의
+  `COPY build/libs/overmind-*.jar`가 이미 정확히 하나만 매치한다.
+  `python3 -c "import yaml; yaml.safe_load(...)"`로 YAML 구문을 확인했고
+  잡 순서가 `verify, guardrails, publish, evaluation`임을 파싱 결과로
+  직접 확인했다. `./gradlew guardrails`는 11/11 PASS(로컬에 gitleaks가
+  없어 `gitleaksScan`은 여전히 생략 — CI가 실제 시크릿 스캔 게이트다),
+  `./gradlew test`는 159건 PASS. **Docker가 없어 `docker build`/`docker
+  run`(브리프 Step 4)와 실제 GHCR push·`docker manifest inspect`(Step 6,
+  두 아키텍처가 다 올라갔는지)는 이 환경에서 실측하지 못했다** — `master`
+  병합 후 첫 `publish` 실행이 진짜 검증이다. `integrationTest`(L2)는 이
+  브랜치의 기존 제약대로 Testcontainers 초기화 단계에서 실패한다(이번
+  변경과 무관).
+- **플랜 T7을 구현했다 — pg_dump + gpg 암호화 백업, systemd timer, 복원
+  드릴 절차.** **브리프가 Task 5 이전 파일 구조를 참조하고 있었다** —
+  `source /etc/overmind/overmind.env`, `$POSTGRES_USER`/`$POSTGRES_DB`를
+  가정했는데 그 파일은 이미 T5에서 `db.env`+`app.env`로 갈라졌다. 브리프
+  그대로 옮기면 스크립트 첫 줄에서 죽는다는 걸 구현 전에 확인하고 실제
+  구조에 맞춰 다시 썼다. **`pg_dump`는 db.env의 부트스트랩 superuser
+  (`POSTGRES_USER`)로 돌린다** — 앱 역할(`OVERMIND_DB_USER`)은 자기가
+  만든 테이블은 다 소유해 오늘은 문제없이 보이지만, `pg_dump`는 그 롤이
+  SELECT할 수 있는 객체만 담아 소유권에 기대는 방식은 미래에 다른 계정이
+  만든 객체가 조용히 빠지는 구멍이 된다. superuser는 권한 검사를 우회해
+  이 침묵을 원천 차단한다. **복구 전제조건도 파일 두 개로 나눠 적었다:**
+  `db.env`(복원 시 붙을 계정)와 `app.env`의 `OVERMIND_CURSOR_SECRET`
+  (잃으면 DB는 복원돼도 기존 커서를 못 쓴다) 둘 다 박스 밖 사본이
+  필요하다고 README·스크립트 주석 양쪽에 명시했다.
+  **빈 파일 검사를 실제로 실행해서 확인하다가 브리프의 전제 하나가 틀렸다는
+  걸 발견해 고쳤다.** 브리프는 "`pg_dump`가 실패하면 `gpg`가 그걸 0바이트로
+  통과시킨다"고 했지만, 실측해 보니 `gpg`는 빈 입력도 ~70바이트짜리 유효한
+  암호화 봉투로 감싼다 — 절대 0바이트가 아니다. 그리고 `set -euo pipefail`
+  때문에 `pg_dump`(사실은 `docker`) 실패가 파이프 전체를 비정상 종료시켜
+  `[ ! -s "$target" ]` 검사 줄에 도달하기도 전에 스크립트가 끝나 버렸다 —
+  그 결과 **"성공한 것처럼 보이는" 70바이트짜리 손상된 백업 파일이 지워지지
+  않고 디스크에 남았다**(먼저 트랩 없이 실행해 직접 목격함). `trap 'rm -f
+  "$target"' ERR`를 파이프 직전에 걸고 검사 통과 직후 `trap - ERR`로
+  해제해 고쳤다 — 이후 재실행하니 같은 실패 시나리오에서 exit 1과 함께
+  백업 디렉터리가 완전히 비어 있음을 확인했다(아래 커맨드로 재현 가능).
+  **증명(Step 4, 가짜 `docker`로 재현):**
+  `PATH="$tmp/bin:$PATH" COMPOSE_FILE=... BACKUP_DIR="$tmp/backups"
+  PASSPHRASE_FILE="$tmp/pass" DB_ENV_FILE="$tmp/db.env"
+  deploy/backup/overmind-backup.sh` → `EXIT CODE: 1`,
+  `ls "$tmp/backups"` → 빈 디렉터리. 브리프처럼 스크립트를 임시로 고쳤다
+  되돌리는 대신 `DB_ENV_FILE`을 다른 경로 변수들(`COMPOSE_FILE`,
+  `BACKUP_DIR`, `PASSPHRASE_FILE`)과 같은 방식으로 오버라이드 가능하게 만들어
+  스크립트 본문을 건드리지 않고 테스트했다. 정상 동작(성공 케이스)도 가짜
+  `docker`로 별도 확인 — exit 0, 파일 생성, 트랩이 해제돼 이후 보존 정리가
+  방금 만든 정상 백업을 지우지 않음을 확인했다. `bash -n` 문법 통과,
+  로컬에 `shellcheck` 없어 생략. **Docker/PostgreSQL이 없어 실제
+  `docker compose exec db pg_dump`·`pg_restore`·복원 드릴 자체는 이
+  환경에서 실행하지 못했다** — 위 증명은 셸 로직(파이프 실패 전파, 트랩,
+  빈 파일 검사)만 검증한다.
+- **T7 리뷰에서 Important 2건 — 복원 드릴이 애매한 실패를 만들었다.**
+  스펙·품질은 승인됐지만(빈 파일 가드는 독립 재검증에서도 버텼다),
+  ① `pg_restore -U drill -d overmind --no-owner`에 `--no-acl`이 빠져
+  있었다. `pg_dump`가 기본으로 담는 스키마 ACL 안에 `02-app-role.sh`가
+  만든 `GRANT ... ON SCHEMA public TO <OVERMIND_DB_USER>`가 있는데, 드릴
+  컨테이너는 초기화 스크립트를 안 돌려 그 역할이 아예 없다 — 테이블·행은
+  전부 멀쩡히 복원돼도 이 GRANT 하나 때문에 `pg_restore`가 매번 "role ...
+  does not exist" 에러로 끝난다. 운영자가 보기엔 백업이 깨진 것과
+  구분이 안 된다. `--no-acl`을 추가하고, 드릴이 검증하려는 건 소유권·
+  권한이 아니라 데이터 생존이라는 이유를 README에 남겼다.
+  ② 드릴이 실제 재해 복구 순서를 전혀 검증하지 않았고 그 순서 자체가
+  어디에도 문서화돼 있지 않았다. 이 README의 "최초 1회"→"첫 기동"을
+  그대로 따르면 `docker compose up -d`가 `app`도 같이 올리는데,
+  `depends_on: service_healthy`는 `pg_isready`만 보고 사람이 `pg_restore`를
+  끝내는 걸 기다려주지 않는다 — Flyway가 빈 스키마를 먼저 만들고 나면
+  뒤이은 `pg_restore`(커스텀 포맷, `--clean` 없음)가 기존 객체와 충돌한다.
+  이 플랜에 DR 런북을 소유한 태스크가 따로 없어 여기 안 적으면 어디에도
+  없는 상태였다. "실제 복구 순서" 절을 새로 추가 — `db`만 먼저 올리고,
+  healthy를 기다리고, 복원하고, 행 수를 확인한 **다음에만** `app`을
+  올린다는 5단계를 못박았다. compose를 다시 설계하지 않고 순서만
+  문서화하는 것으로 범위를 한정했다(리뷰 지시대로).
+  **Minor 1건도 같이 고쳤다:** 고정 `sleep 10`을 `pg_isready` 폴링
+  루프(최대 30초, 초과하면 그대로 실패)로 바꿔 콜드 스타트에서
+  "연결 실패"가 "백업 손상"처럼 보이는 같은 종류의 모호함을 없앴다.
+  **리뷰가 이번 라운드에서 보류하기로 한 2건(NUL/개행 미대응 보존 정리,
+  `POSTGRES_USER`/`POSTGRES_DB` 존재 검증 부재)은 건드리지 않았다** —
+  전자는 이 스크립트가 만드는 파일명 범위에서는 안전함을 리뷰가 이미
+  실측했고, 후자는 ERR 트랩으로 이미 크게 실패하므로 진단 품질 문제일
+  뿐 정확성 문제가 아니다.
+  `overmind-backup.sh` 자체는 건드리지 않았다 — `bash -n` 재확인으로
+  변경 없음을 확인했다. `./gradlew guardrails`는 여전히 11/11 PASS.
+  **README를 처음 보는 운영자 관점으로 위에서 아래로 다시 읽었다** —
+  변수(`$POSTGRES_USER` 등)가 나오기 전에 어디서 오는지(각 절 도입부의
+  `source /etc/overmind/db.env`) 먼저 나오고, "최초 1회"에서 이미 만든
+  파일 경로(`/opt/overmind/compose.yaml`, `/etc/overmind/backup.pass`)를
+  그대로 재사용해 앞뒤로 끊기지 않는다. **여전히 Docker/PostgreSQL이
+  없어 드릴 자체(컨테이너 기동, 실제 `--no-acl` 복원, 새 5단계 DR 순서)는
+  실행해 확인하지 못했다** — 이번 확인은 문서를 순서대로 읽고 앞 절의
+  산출물과 뒷 절의 입력이 실제로 맞물리는지를 손으로 대조한 것이다.
+- **T7 리뷰 2라운드 — Important 2건이 "부분 해결"로 돌아왔다.** 1라운드에서
+  넣은 "실제 복구 순서" 절이 순서 자체는 맞았지만 4단계(복원)에 `...`와
+  "위 드릴과 같은 방식으로", 5단계(검증)에 "행 수를 확인해"만 있고 실제
+  명령이 없었다 — 재검토가 운영자로 걸어보니 두 번 다 위로 스크롤해
+  드릴의 명령을 손으로 고쳐 써야 했고, 그 고쳐 쓰는 과정에서 드릴의 고정
+  `-U drill -d overmind`를 운영 DB에 그대로 옮기는 사고가 나기 쉬운
+  구조였다. **고쳤다:** 4단계에 `source /etc/overmind/db.env`부터
+  `pg_restore ... --no-owner --no-acl`까지 전부 그 자리에 완결된 명령으로
+  썼다(백업 파일명 자리만 `<복원할 백업 파일>`로 남기고 `ls`로 고르라고
+  명시). 5단계는 "원본과 대조"가 실제 재해에서는 성립하지 않는다는 걸
+  먼저 짚었다 — DB를 통째로 잃어 복구하는 것이므로 비교할 원본 자체가
+  없다. 대신 대체 점검 3가지를 명령과 함께 적었다: ① `pg_restore`가
+  에러 없이 끝났는가, ② `count(*)`가 0이 아니고 평소 데이터량과 크게
+  어긋나지 않는가, ③ `max(created_at)`이 백업 파일명의 UTC 타임스탬프
+  근처인가(그보다 한참 전이면 오래된 백업이 섞인 것, 그보다 뒤면 애초에
+  불가능한 값). 드릴 섹션과 복구 순서 섹션 양쪽에 서로의 존재와 차이
+  (던져버릴 `drill` 계정 vs 운영 `db.env` 계정)를 한 줄씩 남겨 중복을
+  의도적으로 남겼다(리뷰가 "중복이 낫다"고 명시). `grep -n '\.\.\.'`
+  /`같은 방식으로`로 남은 참조가 없음을 확인했다. `overmind-backup.sh`는
+  여전히 건드리지 않았다(`bash -n` 재확인, `git diff --stat` 빈 출력).
+  `./gradlew guardrails` 11/11 PASS. **README를 다시 처음부터 끝까지
+  운영자 관점으로 읽었다 — 이번엔 4·5단계에서 스크롤하거나 드릴 명령을
+  추론할 필요 없이 그 자리의 명령만으로 끝까지 갈 수 있음을 확인했다.**
+  여전히 Docker가 없어 드릴·새 4~6단계 자체의 실행은 못 했다 — 이번
+  확인도 문서 읽기와 손 대조다.
+- **플랜 T8을 구현했다 — 배포 검증 절차를 스모크 문서에 붙였다.**
+  `docs/harness/70-m0-smoke.md`의 기존 M0 10항목 표는 손대지 않고,
+  `## 실패했을 때` 앞에 별도 표(D1~D13)를 새로 넣었다 — 성격이 다르고
+  (재배포마다 다시 채울 것과 한 번만 확인하면 되는 것), 섞으면 안 된다는
+  브리프 지시를 따랐다. **브리프가 Task 1~7 이전 시점 기준이라 5개
+  항목의 전제가 이미 틀려 있었다:**
+  - **D3(pgvector superuser 순서)** — 브리프는 앱이 `POSTGRES_USER`(클러스터
+    superuser)로 접속한다고 전제해 "initdb 없이 띄우면 Flyway가 권한
+    오류로 실패한다"고 썼지만, 그 전제 자체가 T5 이전에도 이미 거짓이었다
+    (superuser는 그 오류에 안 걸린다). T5가 계정을 `POSTGRES_USER`
+    (부트스트랩)와 `OVERMIND_DB_USER`(`02-app-role.sh`가 만드는
+    NOSUPERUSER 앱 역할)로 분리해 지금은 검사가 실제로 의미 있어졌다 —
+    `01-vector.sql`만 빼고(`02-app-role.sh`는 남기고) 임시 볼륨으로
+    기동해 앱 역할이 진짜 non-superuser임을 실측하도록 다시 썼다.
+  - **D4(어느 게이트가 기동을 막는가)** — Task 1이 실측한 사실
+    (`SecurityConfig.jwtDecoder`가 싱글턴 빈이라 `requireComplete()`가
+    프로파일과 무관하게 동기 호출됨, 스펙 §13 D-M)을 "현재 기대"로
+    명시했다. **결과를 모르는 검사로 남겼다** — 프로파일을 빼고도
+    실패하면 기대대로 D-M이 맞고, 기동에 성공하면 `Validation`이 진짜
+    게이트였다는 뜻이라 D-M이 틀린 것이다.
+  - **D5/D6(디스커버리)** — 브리프 작성 시점엔 메타데이터 엔드포인트가
+    이미 200을 주면서도 `authorization_servers`가 없고
+    `tls_client_certificate_bound_access_tokens: true`(mTLS 안 쓰는데)를
+    광고하고 있었다(Task 1이 고침), 401에 `resource_metadata`가 안
+    실려 있었다(Task 2가 고침), 그 URL들이 루프백을 가리켰다(Task 3이
+    고침). D5는 이제 존재하는 필드 값을 확인하도록, D6은 `resource`·
+    `resource_metadata` 둘 다 `https://` 공개 오리진으로 시작하는지
+    (127.0.0.1도 http://도 아님) 확인하도록 다시 썼다.
+  - **D10(복원 드릴)** — `deploy/README.md`가 이제 드릴(던져버릴 컨테이너)과
+    실제 복구 순서(운영 `db`) 둘 다 담고 있어, 브리프처럼 명령을 다시
+    적으면 README가 바뀔 때 표가 따로 놀게 된다. 드릴 절 이름
+    ("복원 드릴 — 이걸 해야 백업이다")을 가리키도록만 썼다.
+  - **D13 신규** — T5가 만든 silent-failure 가드(`POSTGRES_USER`=
+    `OVERMIND_DB_USER`면 `02-app-role.sh`가 exit 1)를 브리프는 검증
+    항목에 넣지 않았다. "가드를 본 적 없으면 가드가 아니다"는 이 브랜치의
+    기존 규율에 따라 D13으로 추가했다 — 브리프의 D1~D12 순서를 그대로
+    두고 뒤에 붙였다.
+  D4·D8은 여전히 결과를 모르는 검사임을 명시했다(나머지는 확인). D7이
+  자동 테스트로 대신할 수 없는 이유(MockMvc가 `RemoteIpValve`를 거치지
+  않음)도 그대로 남겼다. **확인일·확인자 칸은 새 표에서도 전부 비워
+  뒀다** — 빈 칸이 "안 해봤다"는 뜻이라는 문서 규약을 그대로 지켰다.
+  `사전 준비` 절에 Auth0 Default Audience 설정 한 줄(D8이 이걸 확인한다는
+  안내)도 브리프대로 추가했다. `src/**`·`build.gradle.kts`·테스트는
+  건드리지 않았다. `./gradlew guardrails` 11/11 PASS.
+- **플랜 T9을 구현했다 — 결정을 등재하고 스펙을 정정했다(이 플랜의 마지막
+  태스크).** `docs/arch/decisions.md`: "확정"에 D-H~D-L을 브리프 그대로
+  추가하고, D-M은 `SecurityConfig.jwtDecoder`의 `requireComplete()` 호출이
+  실행으로 검증되지 않았으므로 "열려 있음"에 넣었다(배포 스모크 D4가
+  확인·반증한다). 브리프에 없던 두 항목도 "확정"에 추가했다 — **D-N**(DB
+  계정을 부트스트랩 superuser와 앱 전용 `OVERMIND_DB_USER` role로 분리)과
+  **D-O**(시크릿 파일을 `db.env`/`app.env`로 나누고 `db`에서 `${...}` 치환을
+  완전히 뺌). 둘 다 Task 5 리뷰가 실측으로 찾아 원래 계획에 없던 채로 만든
+  결정이라, 스펙만 고치고 결정 레지스터에 남기지 않으면 나중에 왜 그렇게
+  됐는지 추적할 수 없다.
+  배포 스펙(`docs/superpowers/specs/2026-09-04-overmind-deploy-design.md`)을
+  다섯 군데 정정했다:
+  - **§7.2** — G-1을 실측(Task 1)으로 정정. `protectedResourceMetadata`를
+    켜기 전 무토큰 프로브의 실제 응답은 403도 404도 아니라 **200**이었고
+    본문은 `{"resource":"http://localhost/mcp","bearer_methods_supported":
+    ["header"],"tls_client_certificate_bound_access_tokens":true}`였다.
+    `OAuth2ProtectedResourceMetadataFilter`가
+    `addFilterBefore(..., AbstractPreAuthenticatedProcessingFilter.class)`로
+    `AuthorizationFilter`보다 앞에 앉아 인가 규칙이 이 요청을 보지도
+    못한다 — `permitAll` 매처는 추가하지 않았다. 더 큰 정정: 이 엔드포인트는
+    "없는 기능"이 아니라 **"이미 켜져 있으면서 틀린 값을 광고하는 기능"**
+    이었다(mTLS를 안 쓰는데 `tls_client_certificate_bound_access_tokens:
+    true`, `authorization_servers` 없음) — 이쪽이 더 정확하고 교훈적인
+    서술이라 그대로 남겼다. G-4(리버스 프록시 뒤 루프백 광고, Task 3이
+    고침)를 표에 추가했다.
+  - **§6.2·§6.3·§12-3**(§12-3은 지금은 `70-m0-smoke.md`의 D3) — 두 계정
+    모델(D-N)을 반영. 최초 배포 자산 초안은 앱 계정을 `POSTGRES_USER`
+    (클러스터 superuser)와 같은 값으로 쓰라고 안내하고 있었다 — 그대로였다면
+    §6.2("앱 계정 하나를 쓴다. superuser가 아니다")를 어겼을 것이고, §6.3의
+    근거("Flyway가 non-superuser 앱 계정으로 실행된다")도 그 검사(initdb
+    없이 띄우면 권한 오류로 실패)도 둘 다 거짓이었을 것이다(superuser는
+    그 오류에 안 걸린다). D-N이 계정을 분리한 뒤에야 세 절 모두 참이 됐다는
+    것을 명시했다.
+  - **§5.4·§9.1~9.4·§10.3·§11** — 시크릿 파일 분리(D-O)를 반영.
+    `/etc/overmind/overmind.env` 단일 파일 + `db`의 `${...}` 치환 설계는
+    README의 "최초 1회"가 `/opt/overmind/.env`를 `OVERMIND_TAG=` 한 줄로
+    덮어쓰는 순간 DB 자격증명이 빈 문자열이 되어 postgres 엔트리포인트가
+    하드 실패하는 결함이었다(리뷰가 실제로 재현) — `deploy/db.env.example`/
+    `deploy/app.env.example` 이원화와 `db`의 `env_file:` 전환으로 고쳤다는
+    것을 각 절에 남겼다. §9.1에 `POSTGRES_PASSWORD`(부트스트랩 superuser
+    비밀번호, D-N으로 새로 생긴 시크릿) 행을 추가했다.
+  - **§12** — 표 자체는 손대지 않고(원래 설계 의도의 기록으로 남김), 위에
+    "실제 운영 절차는 `docs/harness/70-m0-smoke.md`의 D1~D13"이라는 정정
+    문구를 추가해 앞으로 두 문서가 갈라지지 않게 했다. §12의 3번 행은 앱
+    계정이 진짜 non-superuser일 때만 이 검사가 의미 있다는 조건을 달아
+    다시 썼다.
+  `docs/superpowers/specs/2026-09-04-overmind-deploy-design.md` §7.2 외에는
+  브리프 범위 밖이었지만, 브리프를 발주한 상위 작업 설명이 명시적으로 요구한
+  정정이라 함께 반영했다 — 상위 지시와 브리프가 충돌하지 않고 브리프가 더
+  좁은 부분집합이었다. `build.gradle.kts`·`src/**`·테스트는 건드리지 않았다.
+  `./gradlew guardrails` 11/11 PASS.
 
 ### 다음 할 일
 
-1. T10~T13은 같은 브랜치의 PR #11로 전달한다: https://github.com/JunYupK/OverMind/pull/11
-   다음 구현 태스크는 T14이며 사용자 요청 시 착수한다. PR 병합은 별도 요청 전까지 수행하지 않는다.
-2. 운영 설정은 `OVERMIND_OIDC_ISSUER`, `OVERMIND_OIDC_AUDIENCE`,
+1. **플랜 `2026-09-04-overmind-deploy.md`는 T1~T9 전부 완료됐다.** 남은 것은
+   이 플랜이 만들 수 없는 손 작업(H1~H6 — Auth0 테넌트 설정, DNS, flight-friend
+   종료, 디스크 정리, 미확정 값 확인, 원격 브랜치 삭제. 플랜 문서 "남은 손
+   작업" 절 참조)과 실배포·수동 스모크(`docs/harness/70-m0-smoke.md`)다
+2. **구현 전에 채워야 할 미확정 값** (스펙 §부록 B): `nproc`, `free -m`,
+   `docker compose version`, 도메인. 앞의 셋은 `compose.yaml`의 `mem_limit`과
+   JVM 힙을(T5가 주석으로 남겨 뒀다), 도메인은 Caddyfile·`resource`·Auth0
+   콜백을 정한다
+3. **코드 격차 0건 남음** (스펙 §7.2). G-1(`denyAll`이 `/.well-known/**`를 삼킨다는 추정)은
+   Task 1 실측으로 반증됐고(실제로는 200, 필터가 애초에 인가 규칙보다 앞에 있었다), G-3
+   (`protectedResourceMetadata` 미활성)은 커밋 `a35fae0`으로, G-2(`McpHttpErrors
+   .unauthenticated()`가 `WWW-Authenticate`를 덮어써 `resource_metadata`
+   파라미터를 지움)는 Task 2로, G-4(`resource`가 요청 URL에서 나와 리버스 프록시 뒤에서
+   루프백을 광고함)는 Task 3으로 각각 구현·해소됐다. 남은 것은 코드가 아니라
+   실배포·수동 스모크(`docs/harness/70-m0-smoke.md`의 D1~D13)와 B-1~B-3 결정이다
+4. **결정 기록 완료** — D-H~D-L, 그리고 계획에 없던 D-N(DB 계정 분리)·D-O
+   (시크릿 파일 분리)가 "확정"에, D-M(`RequiredSettings.Validation`이 중복
+   방어인가)이 "열려 있음"에 있다(`docs/arch/decisions.md`). D-M은 배포
+   스모크 D4가 확인·반증한다 — 아직 실행하지 않았다
+5. **B-1·B-2·B-3 결정** — 기한이 "M0 완료 전"이다. 실사용 경험이 근거가 되므로
+   배포 후에 판단한다
+6. 운영 설정은 `OVERMIND_OIDC_ISSUER`, `OVERMIND_OIDC_AUDIENCE`,
    `OVERMIND_ALLOWED_SUBJECT`, `OVERMIND_CURSOR_SECRET` 모두 필요하다.
-   issuer는 HTTPS, HMAC 키는 UTF-8 32바이트 이상이다. 운영 기본 키는 없다.
-   production에서는 필수 값 누락 시 기동에 실패한다. discovery/JWKS는 첫 JWT 검증으로
-   미루며, 외부 issuer와 원격 HTTPS 스모크는 T14에서 확인한다.
-3. T13 테스트는 `src/test/java/com/overmind/support/SignedJwtFixture.java`의 실제 RSA
-   서명 픽스처를 재사용한다. 토큰 검증 실패는 고정 401, scope 부족은 고정 403이다.
-   T11 private 콜백의 self-invocation을 피하려고 security chain 안의 `McpScopeFilter`가
-   SDK dispatch 전에 scope를 검사한다. T11의 permit-all 테스트 설정은 T12 검증에 쓰지 않는다.
-4. **MCP 기동/변환 주의:** protocol `streamable`을 명시해야 한다. 직접 등록한 도구는
+   issuer는 HTTPS 절대 URI, HMAC 키는 UTF-8 32바이트 이상이다. 운영 기본 키는 없다
+7. **MCP 기동/변환 주의:** protocol `streamable`을 명시해야 한다. 직접 등록한 도구는
    `validateToolInputs(false)`에 따라 DTO/유스케이스가 입력 검증을 책임진다.
    customizer는 servlet 웹 환경에서만 생성하고 framework customizer에 먼저 위임한다.
-   MCP 매퍼의 map-content inclusion `ALWAYS`를 유지해야 명시적인 null이 사라지지 않는다.
+   MCP 매퍼의 map-content inclusion `ALWAYS`를 유지해야 명시적인 null이 사라지지 않는다
 
 ### 확정된 결정
 
@@ -63,6 +680,14 @@
 - **D-G — Spring Boot 4.1.1로 올린다** (사용자 승인). D-B의 Boot 3 부분을 대체한다.
   Java 21 유지(Boot 4 기준선은 Java 17). Spring AI 2.0.1 BOM을 사용한다.
   T10 실측에서 transport는 2.0.1, MCP core는 2.0.0으로 확인했다. 결정 문서에 정정 기록.
+- **D-H~D-L — 배포 설계의 다섯 결정** (CI 단일 빌드, 단일 compose, Auth0,
+  sha 고정 배포, pg_dump+gpg 백업). 배포 스펙 §5.2·§5.3·§8.1·§10.4·§11 근거.
+- **D-N — DB 계정을 부트스트랩 superuser와 앱 전용 role로 분리한다.** 원래
+  계획에 없었고 Task 5 리뷰가 실측으로 찾았다(배포 스펙 §6.2·§6.3,
+  `docs/harness/70-m0-smoke.md`의 D3).
+- **D-O — 시크릿 파일을 `db.env`/`app.env`로 분리하고 `db`에서 `${...}` 치환을
+  뺀다.** 원래 계획에 없었고 Task 5 리뷰가 실측으로 찾았다(배포 스펙
+  §5.4·§9.1~9.4·§10.3·§11).
 전부 `docs/arch/decisions.md`에 있다.
 
 ### 열려 있는 결정
@@ -71,6 +696,10 @@
   M0가 끝나기 전에** 한다. M0를 매일 써 본 경험이 있어야 slot registry 범위·snapshot
   시점·bootstrap 수치를 근거를 갖고 정할 수 있다
 - **B-4 — L3 비용 상한을 강제하는 장치** (기한 M5 이전). 여전히 산문뿐이다
+- **D-M — `RequiredSettings.Validation`이 중복 방어인가.** 코드 읽기로는
+  `SecurityConfig.jwtDecoder`가 싱글턴이라 기동 시 `requireComplete()`가
+  프로파일과 무관하게 동기 실패해야 한다. **실행으로 확인하지 않았다** —
+  배포 스모크 D4가 확인·반증한다(`docs/arch/decisions.md`, 배포 스펙 §13).
 - **스펙 §5.4의 2 MiB 예산은 공개 API로 도달 불가다.** `limit` 최대 100(§5.2) ×
   content 최대 16 KiB(§4.2) = 1,638,400 bytes. Task 7은 스펙 수치를 그대로 두되
   예산을 주입 가능하게 만들어 로직만 검증하고, **도달 불가라는 사실을 못 박는 검사**를
@@ -102,6 +731,14 @@
 
 ### 이월된 결함 — 닫히지 않았고 각각 이유가 있다
 
+- **L1은 `internal-proxies`의 신뢰 경계를 검증하지 못한다(Task 3).**
+  `MockMvc`는 서블릿 컨테이너를 거치지 않아 Tomcat `RemoteIpValve`가 아예
+  존재하지 않는다 — `internal-proxies`를 `.*`(전부 신뢰)로 바꿔도 관련 L1
+  테스트는 그대로 PASS한다(직접 확인함). `ResourceIdentity`가 요청이 말하는
+  대로 URL을 만든다는 성질만 고정할 수 있고, 그 요청이 신뢰할 만한 프록시에서만
+  왔는지는 배포 스모크(`docs/harness/70-m0-smoke.md`의 D7)가 실측해야 한다. 밸브를
+  흉내 내는 테스트를 억지로 만들지 않기로 했다 — 통합 테스트가 검증 못 하는
+  범위를 가짜로 메우면 그 자체가 거짓 신호가 된다.
 - `@Nested` 내부 클래스의 `@SpringBootTest`는 계층 게이트를 여전히 우회한다
   (google-java-format으로는 도달할 수 없는 형태라 우선순위를 낮췄다)
 - `@Tag(상수)` 거짓 양성 — 안전한 방향으로 실패하므로 의도적으로 남겼다
@@ -113,11 +750,17 @@
   실 LLM L3가 없다고 못 박았고 §11은 LLM extraction을 범위 밖으로 뒀다. **M0에는 LLM을
   부를 곳이 아예 없어 묶을 자리가 없다.** 억지로 묶으면 스펙과 충돌한다
 - `OVERMIND_LLM_API_KEY` 시크릿 미등록 — 실 L3 실행 전에 필요하다
-- **원격 브랜치 3종 미삭제 — 이 환경에서 지울 수 없다.** `feat/harness`,
-  `feat/vendor-skills`, `feat/widen-log-guard` 전부 `--cherry-pick`으로 master에 대응
-  커밋이 있어 삭제해도 잃는 것이 없다. 그런데 `git push --delete`가 **403**이고
-  GitHub MCP에는 브랜치 삭제 도구가 없다. 로컬에서
-  `git push origin --delete <브랜치>`로 지워야 한다
+- **원격 브랜치 3종 미삭제 — 이 환경에서 지울 수 없다.** `codex/m0-t2-t3`(팁이 T5),
+  `feat/m0`(팁이 T1), `claude/overmind-handover-8njuet`(PR #5 시절 이력) 셋이다.
+  전부 M0 태스크가 병합된 지금 master보다 뒤처져 있을 뿐이고, 내용은 이후 PR로
+  master에 들어갔다. `claude/overmind-handover-8njuet`은 PR #5(`f902b1d`)로 squash
+  병합됐고, 이 세션에서 파일별로 대조해 브랜치가 소유한 두 테스트 파일과
+  `40-guardrails.md`가 master와 완전히 동일함을 확인했다.
+  **판정 근거는 PR 병합 기록이지 `--cherry-pick`이 아니다** — squash 병합에서
+  `--cherry-pick`은 거짓 음성을 낸다(이전 세션에서 실제로 겪었다).
+  `git push --delete`가 이 컨테이너에서 **403**이고 GitHub MCP에도 브랜치 삭제 도구가
+  없으므로, 로컬에서
+  `git push origin --delete codex/m0-t2-t3 feat/m0 claude/overmind-handover-8njuet`로 지운다
 
 ### 막힌 것
 
@@ -126,6 +769,45 @@
 <!-- ===== 세션 기록 — append-only, 최신이 위 ===== -->
 
 ## 세션 기록
+
+### 2026-09-04 · Claude Code (원격 세션) · 배포 설계 brainstorming · claude/deploy-design
+
+- **한 일:** `docs/superpowers/specs/2026-09-04-overmind-deploy-design.md`를 썼다.
+  brainstorming 스킬의 architectural 경로를 따랐다 — 컨텍스트 조사 → 질문 3라운드 →
+  접근안 3개와 권고 → 섹션별 설계와 승인 → 스펙 작성. 각 단계에서 사용자 승인을 받았다.
+  플러그인 `superpowers:brainstorming`이 이 컨테이너에 없어 `.claude/skills/` 복사본을 썼다
+  (CLAUDE.md가 말한 "플러그인이 없는 도구를 위한" 경우에 해당).
+- **사용자가 결정한 것:** Auth0 무료 티어(안 1) · 단일 compose · 도메인은 placeholder.
+  Claude Chat과 ChatGPT 웹이 1순위 클라이언트이므로 DCR을 지원하는 관리형 AS가 필요했다.
+- **조사에서 나온 것 — 전부 1차 근거로 확인했고, 셋은 "게이트가 통과하는데 아무것도
+  검사하지 않는" 이 레포의 단골 문제와 같은 형태다:**
+  - **pgvector는 trusted 확장이 아니다.** `vector.control` 원본에 `trusted = true`가 없다.
+    `CREATE EXTENSION vector`가 superuser를 요구하는데 `V1__enable_pgvector.sql`은 앱
+    계정으로 돈다. **L2가 이걸 잡을 수 없는 이유가 구조적이다** — `PostgreSQLContainer`의
+    기본 계정이 컨테이너 안에서 superuser라 항상 초록이다. 배포 첫날 깨질 것이 확실했다
+  - **Spring Security 7.1.1이 RFC 9728을 이미 내장하고 있다.** jar를 풀어
+    `OAuth2ProtectedResourceMetadataFilter`의 `"%/.well-known/oauth-protected-resource"`,
+    `ProtectedResourceMetadataConfigurer` DSL, `BearerTokenAuthenticationEntryPoint`의
+    `resource_metadata` 문자열을 직접 봤다. **처음에 "디스커버리 엔드포인트가 없는 게
+    핵심 미결"이라고 사용자에게 말했는데 틀렸다** — 이미 클래스패스에 있었다. 정정했다
+  - **의존성 잠금이 전혀 없다.** lockfile·verification-metadata·`dependencyLocking` 모두 부재.
+    그래서 박스에서 재빌드하면 CI가 검증한 바이트와 갈라질 수 있다 → D-H의 근거가 됐다
+  - **Claude는 `resource`만 보내고 `audience`를 보내지 않는다.** Auth0는 그러면 opaque
+    토큰을 발급하고 `NimbusJwtDecoder`가 파싱하지 못한다. 배포 1순위 함정으로 등재
+- **내가 스스로 잡은 오류 2건 (사용자 질문 덕에 드러났다):**
+  - 섹션 2에서 "박스에서 컴파일하지 말자"고 해놓고 compose에 `build: .`을 썼다.
+    정확히 반대되는 설정이다. CI → GHCR → pull로 고쳤다
+  - "ARM 크로스 빌드 문제가 아예 없다"는 절반만 맞았다. jar는 중립이지만 **이미지
+    베이스 레이어는 아키텍처별이다.** `platforms: linux/amd64,linux/arm64`로 고쳤고,
+    Dockerfile에서 `RUN`을 없애 QEMU 없이 멀티아치가 되게 했다
+- **아직 실증하지 않은 판단 (D-M):** `RequiredSettings.Validation`(`@Profile("production")`)이
+  중복 방어로 보인다 — `SecurityConfig.jwtDecoder`가 싱글턴이라 기동 시
+  `requireComplete()`가 동기 호출되기 때문이다. **코드 읽기에 근거한 추론이고 실행으로
+  확인하지 않았다.** 스펙 §12-4를 결과를 모르는 검사로 남겨 확인/반증하게 했다
+- **검증:** 이 세션은 문서만 추가했다. 이 컨테이너에는 Docker가 없어 L2를 돌릴 수 없고
+  gitleaks도 없다. **게이트 판정은 CI가 한다** — 여기서 "통과했다"고 말할 근거가 없다.
+  스펙 본문에 고엔트로피 문자열이 없다는 것만 직접 grep으로 확인했다(C-9, PR #5 사고 재발 방지)
+- **다음:** 사용자가 스펙을 리뷰한 뒤 `writing-plans`. 구현 태스크는 아직 없다
 
 ### 2026-09-03 · Claude Code (원격 세션) · Task 14 acceptance·스모크 · claude/m0-t14
 

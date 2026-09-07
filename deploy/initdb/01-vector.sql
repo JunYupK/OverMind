@@ -1,0 +1,16 @@
+-- pgvector는 trusted 확장이 아니다. vector.control에 trusted = true가 없어서
+-- CREATE EXTENSION vector는 superuser만 실행할 수 있다.
+--
+-- 그런데 V1__enable_pgvector.sql은 Flyway가 앱 계정으로 실행하고, 그 앱 계정은
+-- 정말로 non-superuser다 — 02-app-role.sh(이 파일 다음에 실행된다)가 만드는
+-- 역할이 POSTGRES_USER(부트스트랩 superuser)와 다른 별도 계정이기 때문이다.
+-- 그래서 확장은 여기서 컨테이너 초기화 시점에 postgres superuser로 미리
+-- 만들어 둔다. 그러면 Flyway의 CREATE EXTENSION IF NOT EXISTS는 이미 존재하는
+-- 확장을 보고 NOTICE만 내고 통과한다 -- PostgreSQL이 존재 검사를 권한 검사보다
+-- 먼저 하기 때문이다.
+--
+-- L2 테스트는 이 문제를 구조적으로 잡을 수 없다. PostgreSQLContainer의 기본
+-- 계정이 컨테이너 안에서 superuser라 항상 통과한다. 스펙 §12-3이 배포 시
+-- initdb 없이 한 번 띄워 Flyway가 실패하는 것을 실측한다 — 앱 계정이 정말
+-- non-superuser일 때만 재현되는 실패다.
+CREATE EXTENSION IF NOT EXISTS vector;

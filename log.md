@@ -9,11 +9,12 @@
 
 - **마일스톤:** **M0 — Task 0~14 전부 master 병합 완료.** 남은 것은 코드가 아니라
   실배포·수동 스모크·B-1~B-3 결정이다
-- **최근 갱신:** 2026-09-04 · Claude Code (원격 세션) — Task 5 리뷰 대응 3차:
-  `02-app-role.sh`에 `POSTGRES_USER`=`OVERMIND_DB_USER` 실행 가드 추가
-  (독립 리뷰는 승인, 이 항목은 그 리뷰가 별도로 찾은 silent-failure 경로)
+- **최근 갱신:** 2026-09-07 · Claude Code (원격 세션) — Task 6(CI 이미지 빌드)
+  구현: `.github/workflows/ci.yml`에 `publish` 잡 추가. `needs: [verify,
+  guardrails]`로 게이트를 통과한 커밋만 이미지가 되게 하고, `platforms:
+  linux/amd64,linux/arm64`로 aarch64 박스용 이미지를 같이 만든다
 - **브랜치:** `claude/deploy-design` (`origin/master`의 `b0ebb3d`에서 시작)
-- **현재 검증:** 이 브랜치에서 T1~T5가 구현·커밋됐다. T5는 최초 구현이 리뷰에서
+- **현재 검증:** 이 브랜치에서 T1~T6이 구현·커밋됐다. T5는 최초 구현이 리뷰에서
   Critical 2건(계정 모델 미추적, `.env` 덮어쓰기)으로, 1차 대응이 다시
   Important 1건(SQL 문자열 접합 취약성)으로 반려됐다. **독립 리뷰가 구현
   자체는 승인**했지만, `POSTGRES_USER`=`OVERMIND_DB_USER`로 두면 세 파일의
@@ -244,11 +245,42 @@
   실패는 Docker 부재라는 이미 알려진 제약이지 가드 문제가 아니다.** 가드
   섹션만 떼어낸 사본으로도 같은 두 결과(exit 1 / 통과)를 재현해 psql 유무와
   무관하게 가드 로직만 검증했다.
+- **플랜 T6을 구현했다 — CI가 이미지를 만들어 GHCR에 올린다.**
+  `.github/workflows/ci.yml`의 `guardrails` 잡 뒤, `evaluation` 잡 앞에
+  `publish` 잡을 추가했다. **`needs: [verify, guardrails]`**가 이 잡의
+  전제 전부다 — 두 게이트가 빨간 커밋은 이미지가 아예 만들어지지 않아,
+  박스가 pull하는 바이트가 곧 CI가 검증한 바이트가 된다(D-H). 이 프로젝트에
+  의존성 잠금이 없다는 사실(T5에서 이미 확인)이 재빌드 대신 CI 단일 빌드를
+  택한 이유다. `platforms: linux/amd64,linux/arm64`로 멀티아치를 만든다 —
+  러너는 amd64인데 박스는 aarch64(Oracle Ampere A1)이고, jar는 아키텍처
+  중립이지만 `eclipse-temurin:21-jre` 베이스 레이어는 아니라서 그냥
+  빌드하면 ARM에서 안 돈다. `Dockerfile`에 `RUN`이 하나도 없어(T5, 숫자
+  UID) 이 멀티아치가 QEMU 에뮬레이션 없이 만들어진다 — 그래서 `Dockerfile`은
+  건드리지 않았다. `if: github.event_name == 'push' && github.ref ==
+  'refs/heads/master'`로 push 외 이벤트(PR, schedule, workflow_dispatch)에서는
+  잡 자체가 스킵된다. 태그는 `ghcr.io/junyupk/overmind:${{ github.sha }}`가
+  주 태그, `:latest`는 편의용 포인터로만 같이 올린다 — 박스가 실제로 소비하는
+  `OVERMIND_TAG`는 커밋 SHA다. 인증은 `secrets.GITHUB_TOKEN`(`packages:
+  write`)만 쓴다 — 레포가 public이라 박스 쪽 pull에는 PAT가 필요 없다.
+  **`Dockerfile`·`build.gradle.kts`·`src/**`는 건드리지 않았다** —
+  `./gradlew bootJar && ls -la build/libs/`로 실측한 결과 `overmind-
+  0.0.1-SNAPSHOT.jar` 단 하나만 나왔고(`-plain.jar` 없음), 기존 `Dockerfile`의
+  `COPY build/libs/overmind-*.jar`가 이미 정확히 하나만 매치한다.
+  `python3 -c "import yaml; yaml.safe_load(...)"`로 YAML 구문을 확인했고
+  잡 순서가 `verify, guardrails, publish, evaluation`임을 파싱 결과로
+  직접 확인했다. `./gradlew guardrails`는 11/11 PASS(로컬에 gitleaks가
+  없어 `gitleaksScan`은 여전히 생략 — CI가 실제 시크릿 스캔 게이트다),
+  `./gradlew test`는 159건 PASS. **Docker가 없어 `docker build`/`docker
+  run`(브리프 Step 4)와 실제 GHCR push·`docker manifest inspect`(Step 6,
+  두 아키텍처가 다 올라갔는지)는 이 환경에서 실측하지 못했다** — `master`
+  병합 후 첫 `publish` 실행이 진짜 검증이다. `integrationTest`(L2)는 이
+  브랜치의 기존 제약대로 Testcontainers 초기화 단계에서 실패한다(이번
+  변경과 무관).
 
 ### 다음 할 일
 
-1. **플랜 `2026-09-04-overmind-deploy.md`를 계속 실행한다.** T1~T5 완료,
-   **T6(CI 이미지 빌드)·T7(백업)부터**다. 실행 방식(subagent-driven / inline)은
+1. **플랜 `2026-09-04-overmind-deploy.md`를 계속 실행한다.** T1~T6 완료,
+   **T7(백업)부터**다. 실행 방식(subagent-driven / inline)은
    사용자가 정한다
 2. **구현 전에 채워야 할 미확정 값** (스펙 §부록 B): `nproc`, `free -m`,
    `docker compose version`, 도메인. 앞의 셋은 `compose.yaml`의 `mem_limit`과

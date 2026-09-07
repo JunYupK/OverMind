@@ -87,6 +87,21 @@
   없어 `docker compose config`·실제 기동·복원 시나리오 자체는 실행 불가 —
   README를 운영자 시점으로 정독해 논리만 재검증했다.
 
+  **CI 적신호 수정 — L2 `LogHygieneTest`가 T2의 헤더 변경을 못 따라갔다.**
+  PR #13의 `verify`가 빨갛게 났다(`integrationTest` 105건 중 1건 실패):
+  `LogHygieneTest.invalid_subject_is_401_without_logging_token_or_claims`가
+  `assertThat(response.headers().firstValue("WWW-Authenticate")).contains("Bearer")`
+  로 단언하고 있었는데, `firstValue()`는 `Optional<String>`을 반환하고 AssertJ의
+  `OptionalAssert.contains(...)`는 **부분 문자열이 아니라 값 동등성**이다. T2 전에는
+  헤더가 정확히 `"Bearer"`였으므로 통과했고, T2가 `resource_metadata="…"`를 붙이면서
+  동등성이 깨졌다. T2는 같은 형태의 `McpAuthorizationTest:73`은 고쳤지만 이건 놓쳤다 —
+  **L2라 이 컨테이너에서 돌릴 수 없어 아홉 번의 태스크 리뷰와 두 번의 브랜치 리뷰를
+  전부 통과해 CI에서야 드러난 자리다.** 단언을 `McpAuthorizationTest`와 같은 형태
+  (`orElseThrow()` 뒤 `startsWith("Bearer ")` + `resource_metadata="` + 메타데이터 경로)로
+  바꿔, 값 동등성 사고가 아니라 T2가 실제로 추가한 동작을 검사하게 했다.
+  `@Tag("integration")` 테스트 전체를 훑어 같은 형태의 낡은 단언이 더 없는지 확인했다 —
+  없다. `guardrails` 11/11, `test` 159/159 PASS. L2 판정은 CI가 한다.
+
   **재리뷰 후속(같은 파도, 별도 커밋).** 수정 파도를 독립 재리뷰해 두 건을
   더 접었다. ① `ci.yml`과 스펙이 GHCR 공개 전환 손 작업을 **H1**으로 가리키고
   있었다 — H1은 Auth0 테넌트 설정이고 새로 추가한 건 **H7**이다(스펙 쪽은

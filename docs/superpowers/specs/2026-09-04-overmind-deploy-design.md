@@ -157,12 +157,14 @@ BOM이 직접 의존성을 고정하지만 전이 의존성 해석은 잠기지 
 
 ### 5.4 compose의 형태
 
+**정정(D-O) — 아래는 최초 설계였다. 실제 `deploy/compose.yaml`은 `db`의 시크릿 주입 방식이 다르다.** 최초 안은 `db`의 세 값(`POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD`)을 `${...}` 치환으로 채우려 했다. 그런데 §10.3의 "최초 1회" 절차가 `/opt/overmind/.env`를 `OVERMIND_TAG=` 한 줄로 **덮어쓴다** — 그대로였다면 이 셋이 전부 빈 문자열이 되어 postgres 엔트리포인트가 하드 실패하고, `db`가 healthy가 안 되니 `app`도 `depends_on: service_healthy`에 막혀 영영 못 떴을 것이다. **README를 문자 그대로 따라도 스택이 뜨지 않는 결함이었다** — 리뷰가 실제로 재현했다. 그래서 `db`도 `env_file:`로 바꿨다. §9.2·§9.4·§10.3·§11의 정정을 함께 본다.
+
 ```yaml
 services:
   db:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
-    environment: [POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD]
+    env_file: /etc/overmind/db.env      # ${...} 치환이 아니다 — 값이 컨테이너 안으로 직접 주입된다
     volumes:
       - overmind-pgdata:/var/lib/postgresql/data
       - ./initdb:/docker-entrypoint-initdb.d:ro
@@ -177,7 +179,7 @@ services:
     depends_on:
       db: { condition: service_healthy }
     ports: ["127.0.0.1:8080:8080"]
-    env_file: /etc/overmind/overmind.env
+    env_file: /etc/overmind/app.env
     environment:
       SPRING_PROFILES_ACTIVE: production
     networks: [overmind-net]
@@ -201,7 +203,11 @@ Flyway가 앱 기동 시 실행한다 (`spring.flyway.enabled: true`). V1이 pgv
 
 ### 6.2 계정
 
-앱 계정 하나를 쓴다. superuser가 아니다.
+**두 계정을 쓴다.** 부트스트랩 superuser(`POSTGRES_USER` — postgres 공식 이미지가 `initdb --username`으로 클러스터 superuser로 만든다)와, 앱이 실제로 접속하는 `OVERMIND_DB_USER`(`LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE`). **두 이름은 반드시 달라야 한다.**
+
+**정정(Task 5, D-N) — 이 문장은 처음부터 참이었던 게 아니다.** 최초 배포 자산 초안은 `OVERMIND_DB_USER`/`OVERMIND_DB_PASSWORD`를 `POSTGRES_USER`/`POSTGRES_PASSWORD`와 같은 값으로 쓰라고 안내했다. 그대로 배포했다면 앱은 클러스터 superuser로 접속했을 것이다 — "앱 계정 하나를 쓴다. superuser가 아니다"라는 원래 문장을 정면으로 어겼을 것이다. 리뷰가 이를 Critical로 잡아 계정을 분리했다: `deploy/db.env.example`이 부트스트랩 superuser 값을 담고, `deploy/initdb/02-app-role.sh`가 컨테이너 최초 기동 시(빈 볼륨일 때만) `OVERMIND_DB_USER`를 만든다. 경고 산문("달라야 한다")만으로는 아무 계층도 에러를 내지 않는다는 것이 3차 리뷰에서 재발견되어, `02-app-role.sh`는 두 이름이 같으면 `psql` 호출 전에 `exit 1`로 기동 자체를 거부한다.
+
+**지금은 이 문장이 참이다: 앱 계정 하나를 쓴다. superuser가 아니다.** 다만 처음부터 그랬던 것은 아니라는 것을 기록해 둔다 — 참이 되도록 만든 것이 D-N이고, §6.3·§12-3이 그 근거로 삼던 전제도 D-N 이전에는 실제로 거짓이었다.
 
 ### 6.3 pgvector는 superuser를 요구한다 — 실증된 제약
 
@@ -214,13 +220,15 @@ module_pathname = '$libdir/vector'
 relocatable = true
 ```
 
-**`trusted = true`가 없다.** 따라서 `CREATE EXTENSION vector`는 superuser만 실행할 수 있다. 그런데 `V1__enable_pgvector.sql`은 Flyway가 앱 계정으로 실행한다.
+**`trusted = true`가 없다.** 따라서 `CREATE EXTENSION vector`는 superuser만 실행할 수 있다.
+
+**정정(D-N) — 이 절의 원래 근거는 한동안 거짓이었다.** "그런데 `V1__enable_pgvector.sql`은 Flyway가 앱 계정으로 실행한다"고 썼지만, §6.2에 적었듯 최초 배포 자산 초안에서는 그 앱 계정이 `POSTGRES_USER`와 같은 값 — 즉 superuser였다. Flyway가 실제로 superuser로 실행되고 있었다면 `CREATE EXTENSION vector`는 이 초기화 스크립트 없이도 그냥 성공했을 것이고, 이 절의 대응은 풀어야 할 문제가 없는 곳에 놓인 해법이었을 것이다. §6.2의 계정 분리(D-N)가 앱 계정을 진짜 non-superuser로 만들고 나서야 이 문단은 다시 참이 됐다.
 
 **L2 테스트는 이것을 구조적으로 잡을 수 없다.** `PostgreSQLContainer`의 기본 계정이 컨테이너 안에서 superuser이므로 항상 통과한다. test/prod parity 구멍이다.
 
 **대응:** 확장을 `docker-entrypoint-initdb.d/01-vector.sql`에서 `postgres` superuser로 미리 만든다. 그러면 Flyway의 `CREATE EXTENSION IF NOT EXISTS vector`는 이미 존재하는 확장을 보고 통과한다 — PostgreSQL이 존재 검사를 권한 검사보다 먼저 하기 때문이다.
 
-**이 순서는 가정이 아니라 검증 항목이다** (§12-3). initdb 스크립트 없이 먼저 띄워 Flyway가 실패하는 것을 본 뒤에 스크립트를 넣는다. 실패를 보지 못하면 이 대응이 필요했다는 증거가 없다.
+**이 순서는 가정이 아니라 검증 항목이다** (§12-3). initdb 스크립트 없이 먼저 띄워 Flyway가 실패하는 것을 본 뒤에 스크립트를 넣는다. **이 검사는 앱 계정이 진짜 non-superuser일 때만 의미가 있다** — D-N 이전처럼 앱 계정이 `POSTGRES_USER`와 같은 값이면 이 실패 자체가 재현되지 않는다(superuser는 애초에 권한 오류에 걸리지 않는다). `docs/harness/70-m0-smoke.md`의 D3이 이 조건까지 반영해 다시 쓰였다(Task 8).
 
 ## 7. 코드 격차 — 디스커버리
 
@@ -232,7 +240,7 @@ relocatable = true
 
 C-7이 요구하는 인가 모델은 완성되어 있다.
 
-### 7.2 없는 것 — 세 개
+### 7.2 없는 것 — 코드 격차, 그리고 격차가 아니었던 것 하나
 
 Spring Security 7.1.1은 RFC 9728 Protected Resource Metadata를 **이미 내장하고 있다.** jar에서 직접 확인했다:
 
@@ -247,15 +255,27 @@ org/springframework/security/config/annotation/web/configurers/oauth2/server/res
 
 클레임도 `resource` / `authorization_servers` / `scopes_supported` / `bearer_methods_supported`를 지원한다. **엔드포인트를 손으로 만들 필요가 없다.**
 
-막힌 지점은 셋이다:
+**정정(Task 1, 구현 단계 실측) — G-1은 틀렸다.** 이 절은 원래 "막힌 지점은 셋이다"라고 단정했다. `protectedResourceMetadata(...)`를 아직 켜지 않은 상태에서 무토큰으로 `GET /.well-known/oauth-protected-resource/mcp`를 직접 찔러 본 결과, 응답은 403도 404도 아니라 **200**이었다:
+
+```
+{"resource":"http://localhost/mcp","bearer_methods_supported":["header"],
+ "tls_client_certificate_bound_access_tokens":true}
+```
+
+Spring Boot 4의 리소스 서버 자동 구성이 `OAuth2ProtectedResourceMetadataFilter`를 이미 설치해 두고 있고, 이 필터는 `addFilterBefore(..., AbstractPreAuthenticatedProcessingFilter.class)`로 `AuthorizationFilter`보다 앞에 앉는다 — 그래서 `anyRequest().denyAll()`이라는 인가 규칙 자체가 이 요청에 도달하지 못한다. `permitAll` 매처는 추가하지 않았고, 필요하지도 않다.
+
+이 실측은 이 절이 놓친 더 큰 그림도 드러냈다: 이 엔드포인트는 **없는 기능**이 아니라 **이미 켜져 있으면서 틀린 값을 광고하는 기능**이었다. `tls_client_certificate_bound_access_tokens: true`를 내보내면서(OverMind는 mTLS를 쓰지 않는다) `authorization_servers`는 아예 없어 문서 자체가 클라이언트에게 쓸모없었다 — 이쪽이 "엔드포인트가 막혀 있다"보다 더 정확하고 더 교훈적인 서술이다.
+
+**정정 — G-4, 스펙 작성 시점에는 없던 네 번째 격차.** 같은 프로브가 보여준 `"resource":"http://localhost/mcp"`는, 메타데이터 문서의 `resource` 클레임과 401 헤더의 `resource_metadata`가 둘 다 서블릿 요청 그대로에서 파생된다는 뜻이다. Caddy 리버스 프록시 뒤에서 앱이 보는 요청은 `http://127.0.0.1:8080`이므로, 그대로면 루프백 주소를 평문 `http`로 광고해 디스커버리가 통째로 깨진다. Task 3이 `server.forward-headers-strategy: native` + 루프백으로 제한한 `internal-proxies` 정규식으로 고쳤다. 브레인스토밍 이후, 즉 이 스펙을 쓴 뒤에 찾은 격차다.
 
 | # | 문제 | 위치 |
 |---|---|---|
-| G-1 | `anyRequest().denyAll()`이 `/.well-known/**`를 삼킨다 | `SecurityConfig.securityFilterChain` |
+| ~~G-1~~ | ~~`anyRequest().denyAll()`이 `/.well-known/**`를 삼킨다~~ — **틀렸다.** `OAuth2ProtectedResourceMetadataFilter`는 `AbstractPreAuthenticatedProcessingFilter`보다 앞에 설치되어 `AuthorizationFilter`에 도달하기 전에 응답을 쓴다. Task 1에서 실측했다(200, `authorization_servers` 없이) | — |
 | G-2 | `McpHttpErrors.unauthenticated()`가 `WWW-Authenticate`를 `"Bearer"`로 덮어써서 프레임워크가 붙였을 `resource_metadata=` 파라미터가 사라진다 | `McpHttpErrors` |
-| G-3 | `protectedResourceMetadata(...)` 미활성 | `SecurityConfig` |
+| G-3 | `protectedResourceMetadata(...)` 미활성 — 켜지 않으면 `resource`·`bearer_methods_supported`·`tls_client_certificate_bound_access_tokens=true`만 있는 기본 문서가 나간다(`authorization_servers`·`scopes_supported` 없음, mTLS를 안 쓰는데 그 클레임만 `true`) | `SecurityConfig` |
+| G-4 | **(브레인스토밍 후 발견)** 리버스 프록시 뒤에서 `resource`와 `resource_metadata`가 루프백 주소로 만들어진다 | `application.yml` |
 
-**G-2가 실질적 차단 지점이다.** MCP 클라이언트는 401 응답의 `resource_metadata` 파라미터를 보고 인가 서버를 찾아간다. 이게 없으면 Claude 웹은 어디서 로그인해야 하는지 알 수 없다.
+**G-2가 실질적 차단 지점이었다.** MCP 클라이언트는 401 응답의 `resource_metadata` 파라미터를 보고 인가 서버를 찾아간다. 이게 없으면 Claude 웹은 어디서 로그인해야 하는지 알 수 없다.
 
 G-2를 고칠 때 C-6을 유지한다 — `WWW-Authenticate`에 `error_description`이나 클레임 값을 싣지 않는다. 메타데이터 URL만 추가한다.
 
@@ -325,33 +345,36 @@ MCP 2026-07-28 스펙이 DCR을 deprecate하고 **CIMD**(Client ID Metadata Docu
 | 변수 | 등급 | 근거 |
 |---|---|---|
 | `OVERMIND_CURSOR_SECRET` | 비밀 | HMAC 키. 유출 시 커서 위조 가능 |
-| `OVERMIND_DB_PASSWORD` | 비밀 | — |
+| `OVERMIND_DB_PASSWORD` | 비밀 | 앱 전용 role(`OVERMIND_DB_USER`)의 비밀번호 |
+| `POSTGRES_PASSWORD` | 비밀 | **(D-N 추가)** 부트스트랩 superuser의 비밀번호. `db.env`에만 있고 앱은 이 값을 모른다 |
 | `OVERMIND_ALLOWED_SUBJECT` | 준민감 | Auth0 `user_id` — 비밀은 아니나 식별자 |
 | `OVERMIND_OIDC_ISSUER` / `_AUDIENCE` | 공개 | issuer는 공개 URL, audience는 protected resource metadata에 실린다 |
 | `OVERMIND_DB_URL` / `_USER` | 낮음 | 사설 네트워크 내부 |
 
 ### 9.2 저장과 한계
 
-`/etc/overmind/overmind.env`, `root:root`, `0600`. compose의 `env_file:`이 참조한다.
+**정정(D-O) — 파일이 하나가 아니라 둘이다.** `/etc/overmind/db.env`(부트스트랩 superuser 자격증명 + 앱 role 이름·비밀번호, `db` 서비스의 `env_file:`이 참조)와 `/etc/overmind/app.env`(앱이 읽는 7개 변수, `app` 서비스의 `env_file:`이 참조). 둘 다 `root:root`, `0600`이다. `/opt/overmind/.env`는 시크릿을 담지 않는다 — `OVERMIND_TAG` 하나만 담아 compose의 `${...}` 치환에 쓰인다(§10.3).
 
-**한계를 명시한다: 환경변수는 강한 비밀 경계가 아니다.** `docker inspect`와 `docker compose config`가 평문으로 출력하므로 docker 그룹 구성원은 모두 볼 수 있다. Docker secrets(`/run/secrets/`)가 더 강하지만 앱이 `*_FILE` 관례를 지원하지 않아 코드 변경이 필요하다.
+**한계를 명시한다: 환경변수는 강한 비밀 경계가 아니다.** `docker inspect`와 `docker compose config`가 평문으로 출력하므로 docker 그룹 구성원은 모두 볼 수 있다 — 파일이 둘로 나뉘어도 이 한계는 그대로다. Docker secrets(`/run/secrets/`)가 더 강하지만 앱이 `*_FILE` 관례를 지원하지 않아 코드 변경이 필요하다.
 
 **docker 그룹 구성원이 1명인 동안 env 파일은 비례하는 선택이다.** 사람이 늘면 그때 올린다 — 이것은 M0 배포의 의도적 수용이지 간과가 아니다.
 
 ### 9.3 생성
 
+**정정(D-O) — cursor-secret은 `app.env`로 간다.**
+
 ```bash
 sudo install -d -m 0700 -o root -g root /etc/overmind
 umask 077
 printf 'OVERMIND_CURSOR_SECRET=%s\n' "$(openssl rand -hex 32)" \
-  | sudo tee -a /etc/overmind/overmind.env >/dev/null
+  | sudo tee -a /etc/overmind/app.env >/dev/null
 ```
 
 `hex 32`는 64자 = 64 UTF-8 바이트로 `MIN_CURSOR_SECRET_BYTES = 32`를 충족한다. **값이 셸 히스토리에 리터럴로 남지 않는다** — 명령만 남는다.
 
 ### 9.4 레포에 들어가는 것
 
-`deploy/overmind.env.example`은 **모든 값을 비워둔다:**
+**정정(D-O) — 파일이 둘로 나뉘었다.** `deploy/db.env.example`(부트스트랩 superuser + 앱 role 이름·비밀번호)과 `deploy/app.env.example`(앱이 읽는 7개 변수) 둘 다 **모든 값을 비워둔다:**
 
 ```
 OVERMIND_CURSOR_SECRET=
@@ -408,20 +431,26 @@ GitHub의 `ubuntu-latest` 러너는 amd64다. jar는 아키텍처 중립이지�
 
 ### 10.3 박스 레이아웃
 
+**정정(D-O) — `/etc/overmind/overmind.env` 단일 파일은 실제로 만들어지지 않았다.** 최초 설계대로였다면 §5.4가 정정한 이유로 스택이 뜨지 않았을 것이다(리뷰가 실측). 대신 두 파일로 나눴다:
+
 ```
 /opt/overmind/
   compose.yaml
-  .env                      OVERMIND_TAG=<커밋 sha>
+  .env                      OVERMIND_TAG=<커밋 sha>              (시크릿 없음)
   initdb/01-vector.sql      CREATE EXTENSION IF NOT EXISTS vector;
+  initdb/02-app-role.sh     OVERMIND_DB_USER를 non-superuser role로 생성(D-N)
 /etc/overmind/
-  overmind.env              앱 시크릿        0600 root:root
-  backup.pass               gpg 패스프레이즈  0600 root:root
+  db.env                    부트스트랩 superuser + 앱 role 이름·비밀번호   0600 root:root
+  app.env                   앱이 읽는 7개 변수                            0600 root:root
+  backup.pass               gpg 패스프레이즈                              0600 root:root
 ```
 
-**`.env`와 `env_file:`은 서로 다른 기구다. 혼동이 고전적인 버그다:**
+**`.env`와 `env_file:`은 서로 다른 기구다. 혼동이 고전적인 버그였다 — 실제로 한 번 일어났다:**
 
-- `/opt/overmind/.env` → compose 파일 안의 `${...}` **치환**에 쓰인다. `OVERMIND_TAG`가 여기 간다
-- `env_file: /etc/overmind/overmind.env` → **컨테이너 안으로 주입**된다. 앱 시크릿이 여기 간다
+- `/opt/overmind/.env` → compose 파일 안의 `${...}` **치환**에만 쓰인다. `OVERMIND_TAG` 하나만 담는다
+- `env_file: /etc/overmind/db.env` / `env_file: /etc/overmind/app.env` → **컨테이너 안으로 직접 주입**된다. 시크릿은 전부 여기로 간다
+
+`db`도 처음에는 `${...}` 치환으로 자격증명을 채우려 했다(§5.4 정정 참고) — "최초 1회" 절차가 `/opt/overmind/.env`를 `OVERMIND_TAG=` 한 줄로 덮어쓰기 때문에, 그 설계대로였다면 `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD`가 전부 빈 문자열이 되어 postgres 엔트리포인트가 하드 실패했을 것이다. `db`도 `env_file:`로 바꿔 이 결함을 원천 제거했다.
 
 `OVERMIND_TAG`를 `env_file` 쪽에 두면 이미지 태그가 치환되지 않아 pull이 실패한다.
 
@@ -451,7 +480,7 @@ sudo docker compose pull && sudo docker compose up -d
 
 DB만이다. 앱은 상태가 없다 — 이미지는 GHCR에, 설정은 `/etc/overmind`에 있다.
 
-`/etc/overmind/overmind.env`의 사본을 박스 밖 안전한 곳에 둔다. 이것은 백업이 아니라 **복구 전제조건**이다 — cursor-secret을 잃으면 DB를 복원해도 기존 커서를 쓸 수 없다.
+**정정(D-O) — 복구 전제조건 파일이 하나가 아니라 둘이다.** `/etc/overmind/db.env`(복원할 때 붙을 부트스트랩 superuser·앱 role 자격증명)와 `/etc/overmind/app.env`(`OVERMIND_CURSOR_SECRET` 포함)의 사본을 각각 박스 밖 안전한 곳에 둔다. 이것은 백업이 아니라 **복구 전제조건**이다 — `db.env`를 잃으면 복호화한 덤프가 있어도 무슨 계정으로 `pg_restore`를 부를지 알 수 없고, `app.env`의 cursor-secret을 잃으면 DB를 복원해도 기존 커서를 쓸 수 없다.
 
 ### 11.2 절차
 
@@ -483,11 +512,13 @@ M0 데이터는 1인 관찰 이벤트 로그라 덤프가 한동안 KB~MB 단위
 
 `70-m0-smoke.md`에 추가한다. **확인일·확인자 칸은 비워둔 채로 시작한다 — 빈 칸은 "안 했음"이다.**
 
+**정정(Task 8, 2026-09-07) — 이 표는 이제 설계 시점 초안일 뿐이다. 실제 운영 절차는 `docs/harness/70-m0-smoke.md`의 D1~D13 표다.** 그쪽이 Task 1·3·5의 실측을 반영해 다시 쓰였다 — D3(계정 분리 후에야 재현 가능해진 실패 조건), D4(§13 D-M을 "기대"로 명시한 결과-모르는 검사), D5·D6(디스커버리 필드 값·공개 오리진 확인), D10(README의 복원 드릴 절을 가리키도록)이 다시 쓰였고, 브리프에 없던 **D13**(D-N 가드가 실제로 기동을 막는지)이 새로 추가됐다. **앞으로 검증 항목이 바뀌면 `70-m0-smoke.md`만 고친다** — 이 표를 따라 고치면 두 문서가 갈라진다. 아래는 무엇을 왜 검증하려 했는지의 최초 기록으로 남긴다.
+
 | # | 무엇을 | 어떻게 깨뜨려서 확인하나 |
 |---|---|---|
 | 1 | 앱 포트가 외부에 안 보인다 | 외부 호스트에서 `curl http://<공인IP>:8080/mcp` → 거부. **그 뒤 `127.0.0.1:` 접두사를 빼고 재기동해 외부에서 응답이 오는 것을 확인한 뒤 되돌린다.** 이걸 봐야 루프백 바인딩이 실제로 무언가를 막는다는 증거가 생긴다 |
 | 2 | DB가 외부에 안 보인다 | 외부 호스트에서 `nc -vz <공인IP> 5432` → 거부 |
-| 3 | pgvector superuser 순서 | initdb 스크립트 **없이** 먼저 띄워 Flyway V1이 권한 오류로 실패하는 것을 확인 → 스크립트를 넣고 성공 확인 (§6.3) |
+| 3 | pgvector superuser 순서 — **앱 계정이 진짜 non-superuser일 때만 의미 있다** (D-N) | `01-vector.sql`만 빼고(`02-app-role.sh`는 남겨 앱 계정이 non-superuser로 만들어지게 하고) 임시 볼륨으로 먼저 띄워 Flyway V1이 권한 오류로 실패하는 것을 확인 → `01-vector.sql`을 넣고 성공 확인 (§6.2, §6.3). **최초 설계에서는 앱 계정이 `POSTGRES_USER`와 같은 값(superuser)이 될 뻔해 이 실패가 재현 불가였다** — 계정을 분리한 뒤에야 이 검사가 실제로 뭔가를 확인하게 됐다 |
 | 4 | 어느 게이트가 실제로 막는가 | issuer를 비우고 기동 → `jwtDecoder`가 던지는지 확인. 그 다음 `SPRING_PROFILES_ACTIVE=production`을 빼고 반복 → **동일하게 실패해야 §13 D-M의 판단이 맞다.** 통과하면 `Validation`이 진짜 게이트다 |
 | 5 | 디스커버리 체인 | `curl -i -X POST https://overmind.<도메인>/mcp` → 401 + `WWW-Authenticate`에 `resource_metadata=`. 그 URL을 `curl` → `authorization_servers`에 Auth0 issuer |
 | 6 | Auth0가 JWT를 준다 | 토큰이 `.`으로 세 조각인지 확인하고 payload를 디코드해 `aud`/`sub`/`scope`를 본다. **세 조각이 아니면 Default Audience가 안 걸린 것이다** (§8.3) |

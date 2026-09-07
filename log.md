@@ -7,9 +7,33 @@
 
 ## 현재 상태
 
-- **마일스톤:** **M0 — Task 0~14 전부 master 병합 완료.** 남은 것은 코드가 아니라
-  실배포·수동 스모크·B-1~B-3 결정이다
-- **최근 갱신:** 2026-09-07 · Claude Code (원격 세션) — Task 8(배포 검증을
+- **마일스톤:** **M0 — Task 0~14 전부 master 병합 완료. 배포 설계 플랜(T1~T9)도
+  이 브랜치에서 전부 구현 완료.** 남은 것은 코드가 아니라 실배포·손 작업(H1~H6)·
+  수동 스모크(`docs/harness/70-m0-smoke.md`)·B-1~B-3 결정이다
+- **최근 갱신:** 2026-09-07 · Claude Code (원격 세션) — Task 9(결정을 등재하고
+  스펙을 정정한다, 이 플랜의 마지막 태스크) 구현. `docs/arch/decisions.md`
+  "확정"에 D-H~D-L을 브리프 그대로, 그리고 브리프에 없던 **D-N**(DB 계정을
+  부트스트랩 superuser와 앱 전용 role로 분리)·**D-O**(시크릿 파일을 `db.env`/
+  `app.env`로 분리하고 `db`에서 `${...}` 치환을 뺌) 두 건을 추가했다 — 둘 다
+  Task 5 리뷰가 실측으로 찾아 계획에 없던 채로 만든 결정이라 별도로 기록해야
+  한다는 지시를 따랐다. **D-M**(`RequiredSettings.Validation`이 중복 방어라는
+  판단)은 여전히 실행으로 확인되지 않아 "열려 있음"에 남겼다 — 배포 스모크
+  D4가 확인·반증한다. 배포 스펙(`2026-09-04-overmind-deploy-design.md`)도
+  여러 곳을 정정했다: **§7.2**는 G-1이 실측 결과 200(403도 404도 아님)이었고
+  `OAuth2ProtectedResourceMetadataFilter`가 `AuthorizationFilter`보다 앞에
+  설치돼 애초에 도달하지 못했다는 것으로 다시 쓰고, "없는 기능"이 아니라
+  "이미 켜져 있으면서 틀린 값을 광고하는 기능"이었다는 더 정확한 서술로
+  바꿨다. G-4를 표에 추가했다. **§6.2·§6.3·§12-3**은 두 계정(부트스트랩
+  superuser/`OVERMIND_DB_USER`) 모델을 설명하고, 이 모델이 갖춰지기 전에는
+  §6.3의 근거(Flyway가 non-superuser로 실행된다)와 §12-3의 검사(initdb 없이
+  띄우면 권한 오류가 난다) 둘 다 거짓이었다는 것을 남겼다. **§5.4·§9.1~9.4·
+  §10.3·§11**은 `overmind.env` 단일 파일 + `${...}` 치환 설계가 `db.env`/
+  `app.env` 이원화로 바뀐 이유(README를 문자 그대로 따라도 `db`의 `${...}`
+  치환이 빈 문자열이 되어 스택이 영원히 안 뜨는 결함을 리뷰가 재현했다)를
+  기록했다. **§12**는 표 자체는 손대지 않고, `70-m0-smoke.md`의 D1~D13이
+  이제 운영 절차라는 정정 문구만 앞에 추가해 이중 유지보수를 피했다.
+  `./gradlew guardrails` 11/11 PASS.
+  이전 갱신(같은 날) — Task 8(배포 검증을
   스모크 절차에 넣기) 구현: `docs/harness/70-m0-smoke.md`에 기존 M0
   10항목 표는 그대로 두고, `## 실패했을 때` 앞에 별도 표(D1~D13)를
   붙였다. 브리프는 Task 1~7 이전 시점 기준이라 절반 가까이(D3·D4·D5·D6·
@@ -35,8 +59,8 @@
   (`overmind.env` 단일 파일)를 참조하고 있어 실제 구조(`db.env`/
   `app.env` 이원화)에 맞게 다시 썼다
 - **브랜치:** `claude/deploy-design` (`origin/master`의 `b0ebb3d`에서 시작)
-- **현재 검증:** 이 브랜치에서 T1~T8이 구현·커밋됐다(T7·T8은 코드가 아니라
-  배포 자산 문서라 `guardrails`만 통과하면 되고, 아래는 T5 리뷰 이력이다).
+- **현재 검증:** 이 브랜치에서 T1~T9이 전부 구현·커밋됐다(T7~T9은 코드가 아니라
+  배포 자산·문서라 `guardrails`만 통과하면 되고, 아래는 T5 리뷰 이력이다).
   T5는 최초 구현이 리뷰에서
   Critical 2건(계정 모델 미추적, `.env` 덮어쓰기)으로, 1차 대응이 다시
   Important 1건(SQL 문자열 접합 취약성)으로 반려됐다. **독립 리뷰가 구현
@@ -446,28 +470,83 @@
   `사전 준비` 절에 Auth0 Default Audience 설정 한 줄(D8이 이걸 확인한다는
   안내)도 브리프대로 추가했다. `src/**`·`build.gradle.kts`·테스트는
   건드리지 않았다. `./gradlew guardrails` 11/11 PASS.
+- **플랜 T9을 구현했다 — 결정을 등재하고 스펙을 정정했다(이 플랜의 마지막
+  태스크).** `docs/arch/decisions.md`: "확정"에 D-H~D-L을 브리프 그대로
+  추가하고, D-M은 `SecurityConfig.jwtDecoder`의 `requireComplete()` 호출이
+  실행으로 검증되지 않았으므로 "열려 있음"에 넣었다(배포 스모크 D4가
+  확인·반증한다). 브리프에 없던 두 항목도 "확정"에 추가했다 — **D-N**(DB
+  계정을 부트스트랩 superuser와 앱 전용 `OVERMIND_DB_USER` role로 분리)과
+  **D-O**(시크릿 파일을 `db.env`/`app.env`로 나누고 `db`에서 `${...}` 치환을
+  완전히 뺌). 둘 다 Task 5 리뷰가 실측으로 찾아 원래 계획에 없던 채로 만든
+  결정이라, 스펙만 고치고 결정 레지스터에 남기지 않으면 나중에 왜 그렇게
+  됐는지 추적할 수 없다.
+  배포 스펙(`docs/superpowers/specs/2026-09-04-overmind-deploy-design.md`)을
+  다섯 군데 정정했다:
+  - **§7.2** — G-1을 실측(Task 1)으로 정정. `protectedResourceMetadata`를
+    켜기 전 무토큰 프로브의 실제 응답은 403도 404도 아니라 **200**이었고
+    본문은 `{"resource":"http://localhost/mcp","bearer_methods_supported":
+    ["header"],"tls_client_certificate_bound_access_tokens":true}`였다.
+    `OAuth2ProtectedResourceMetadataFilter`가
+    `addFilterBefore(..., AbstractPreAuthenticatedProcessingFilter.class)`로
+    `AuthorizationFilter`보다 앞에 앉아 인가 규칙이 이 요청을 보지도
+    못한다 — `permitAll` 매처는 추가하지 않았다. 더 큰 정정: 이 엔드포인트는
+    "없는 기능"이 아니라 **"이미 켜져 있으면서 틀린 값을 광고하는 기능"**
+    이었다(mTLS를 안 쓰는데 `tls_client_certificate_bound_access_tokens:
+    true`, `authorization_servers` 없음) — 이쪽이 더 정확하고 교훈적인
+    서술이라 그대로 남겼다. G-4(리버스 프록시 뒤 루프백 광고, Task 3이
+    고침)를 표에 추가했다.
+  - **§6.2·§6.3·§12-3** — 두 계정 모델(D-N)을 반영. 최초 배포 자산 초안은
+    앱 계정을 `POSTGRES_USER`(클러스터 superuser)와 같은 값으로 쓰라고
+    안내하고 있었다 — 그대로였다면 §6.2("앱 계정 하나를 쓴다. superuser가
+    아니다")를 어겼을 것이고, §6.3의 근거("Flyway가 non-superuser 앱
+    계정으로 실행된다")도 §12-3의 검사(initdb 없이 띄우면 권한 오류로
+    실패)도 둘 다 거짓이었을 것이다(superuser는 그 오류에 안 걸린다).
+    D-N이 계정을 분리한 뒤에야 세 절 모두 참이 됐다는 것을 명시했다.
+  - **§5.4·§9.1~9.4·§10.3·§11** — 시크릿 파일 분리(D-O)를 반영.
+    `/etc/overmind/overmind.env` 단일 파일 + `db`의 `${...}` 치환 설계는
+    README의 "최초 1회"가 `/opt/overmind/.env`를 `OVERMIND_TAG=` 한 줄로
+    덮어쓰는 순간 DB 자격증명이 빈 문자열이 되어 postgres 엔트리포인트가
+    하드 실패하는 결함이었다(리뷰가 실제로 재현) — `deploy/db.env.example`/
+    `deploy/app.env.example` 이원화와 `db`의 `env_file:` 전환으로 고쳤다는
+    것을 각 절에 남겼다. §9.1에 `POSTGRES_PASSWORD`(부트스트랩 superuser
+    비밀번호, D-N으로 새로 생긴 시크릿) 행을 추가했다.
+  - **§12** — 표 자체는 손대지 않고(원래 설계 의도의 기록으로 남김), 위에
+    "실제 운영 절차는 `docs/harness/70-m0-smoke.md`의 D1~D13"이라는 정정
+    문구를 추가해 앞으로 두 문서가 갈라지지 않게 했다. §12-3 행은 앱 계정이
+    진짜 non-superuser일 때만 이 검사가 의미 있다는 조건을 달아 다시 썼다.
+  `docs/superpowers/specs/2026-09-04-overmind-deploy-design.md` §7.2 외에는
+  브리프 범위 밖이었지만, 브리프를 발주한 상위 작업 설명이 명시적으로 요구한
+  정정이라 함께 반영했다 — 상위 지시와 브리프가 충돌하지 않고 브리프가 더
+  좁은 부분집합이었다. `build.gradle.kts`·`src/**`·테스트는 건드리지 않았다.
+  `./gradlew guardrails` 11/11 PASS.
 
 ### 다음 할 일
 
-1. **플랜 `2026-09-04-overmind-deploy.md`를 계속 실행한다.** T1~T8 완료,
-   **T9(결정을 등재하고 스펙을 정정한다)부터**다. 실행 방식(subagent-driven /
-   inline)은 사용자가 정한다
+1. **플랜 `2026-09-04-overmind-deploy.md`는 T1~T9 전부 완료됐다.** 남은 것은
+   이 플랜이 만들 수 없는 손 작업(H1~H6 — Auth0 테넌트 설정, DNS, flight-friend
+   종료, 디스크 정리, 미확정 값 확인, 원격 브랜치 삭제. 플랜 문서 "남은 손
+   작업" 절 참조)과 실배포·수동 스모크(`docs/harness/70-m0-smoke.md`)다
 2. **구현 전에 채워야 할 미확정 값** (스펙 §부록 B): `nproc`, `free -m`,
    `docker compose version`, 도메인. 앞의 셋은 `compose.yaml`의 `mem_limit`과
    JVM 힙을(T5가 주석으로 남겨 뒀다), 도메인은 Caddyfile·`resource`·Auth0
    콜백을 정한다
 3. **코드 격차 0건 남음** (스펙 §7.2). G-1(`denyAll`이 `/.well-known/**`를 삼킨다는 추정)은
-   Task 1 실측으로 반증됐고, G-3(`protectedResourceMetadata` 미활성)은 커밋 `a35fae0`으로,
-   G-2(`McpHttpErrors.unauthenticated()`가 `WWW-Authenticate`를 덮어써 `resource_metadata`
+   Task 1 실측으로 반증됐고(실제로는 200, 필터가 애초에 인가 규칙보다 앞에 있었다), G-3
+   (`protectedResourceMetadata` 미활성)은 커밋 `a35fae0`으로, G-2(`McpHttpErrors
+   .unauthenticated()`가 `WWW-Authenticate`를 덮어써 `resource_metadata`
    파라미터를 지움)는 Task 2로, G-4(`resource`가 요청 URL에서 나와 리버스 프록시 뒤에서
    루프백을 광고함)는 Task 3으로 각각 구현·해소됐다. 남은 것은 코드가 아니라
-   실배포·수동 스모크(스펙 §12)와 B-1~B-3 결정이다
-4. **B-1·B-2·B-3 결정** — 기한이 "M0 완료 전"이다. 실사용 경험이 근거가 되므로
+   실배포·수동 스모크(`docs/harness/70-m0-smoke.md`의 D1~D13)와 B-1~B-3 결정이다
+4. **결정 기록 완료** — D-H~D-L, 그리고 계획에 없던 D-N(DB 계정 분리)·D-O
+   (시크릿 파일 분리)가 "확정"에, D-M(`RequiredSettings.Validation`이 중복
+   방어인가)이 "열려 있음"에 있다(`docs/arch/decisions.md`). D-M은 배포
+   스모크 D4가 확인·반증한다 — 아직 실행하지 않았다
+5. **B-1·B-2·B-3 결정** — 기한이 "M0 완료 전"이다. 실사용 경험이 근거가 되므로
    배포 후에 판단한다
-5. 운영 설정은 `OVERMIND_OIDC_ISSUER`, `OVERMIND_OIDC_AUDIENCE`,
+6. 운영 설정은 `OVERMIND_OIDC_ISSUER`, `OVERMIND_OIDC_AUDIENCE`,
    `OVERMIND_ALLOWED_SUBJECT`, `OVERMIND_CURSOR_SECRET` 모두 필요하다.
    issuer는 HTTPS 절대 URI, HMAC 키는 UTF-8 32바이트 이상이다. 운영 기본 키는 없다
-6. **MCP 기동/변환 주의:** protocol `streamable`을 명시해야 한다. 직접 등록한 도구는
+7. **MCP 기동/변환 주의:** protocol `streamable`을 명시해야 한다. 직접 등록한 도구는
    `validateToolInputs(false)`에 따라 DTO/유스케이스가 입력 검증을 책임진다.
    customizer는 servlet 웹 환경에서만 생성하고 framework customizer에 먼저 위임한다.
    MCP 매퍼의 map-content inclusion `ALWAYS`를 유지해야 명시적인 null이 사라지지 않는다
@@ -482,6 +561,13 @@
 - **D-G — Spring Boot 4.1.1로 올린다** (사용자 승인). D-B의 Boot 3 부분을 대체한다.
   Java 21 유지(Boot 4 기준선은 Java 17). Spring AI 2.0.1 BOM을 사용한다.
   T10 실측에서 transport는 2.0.1, MCP core는 2.0.0으로 확인했다. 결정 문서에 정정 기록.
+- **D-H~D-L — 배포 설계의 다섯 결정** (CI 단일 빌드, 단일 compose, Auth0,
+  sha 고정 배포, pg_dump+gpg 백업). 배포 스펙 §5.2·§5.3·§8.1·§10.4·§11 근거.
+- **D-N — DB 계정을 부트스트랩 superuser와 앱 전용 role로 분리한다.** 원래
+  계획에 없었고 Task 5 리뷰가 실측으로 찾았다(배포 스펙 §6.2·§6.3·§12-3).
+- **D-O — 시크릿 파일을 `db.env`/`app.env`로 분리하고 `db`에서 `${...}` 치환을
+  뺀다.** 원래 계획에 없었고 Task 5 리뷰가 실측으로 찾았다(배포 스펙
+  §5.4·§9.1~9.4·§10.3·§11).
 전부 `docs/arch/decisions.md`에 있다.
 
 ### 열려 있는 결정
@@ -490,6 +576,10 @@
   M0가 끝나기 전에** 한다. M0를 매일 써 본 경험이 있어야 slot registry 범위·snapshot
   시점·bootstrap 수치를 근거를 갖고 정할 수 있다
 - **B-4 — L3 비용 상한을 강제하는 장치** (기한 M5 이전). 여전히 산문뿐이다
+- **D-M — `RequiredSettings.Validation`이 중복 방어인가.** 코드 읽기로는
+  `SecurityConfig.jwtDecoder`가 싱글턴이라 기동 시 `requireComplete()`가
+  프로파일과 무관하게 동기 실패해야 한다. **실행으로 확인하지 않았다** —
+  배포 스모크 D4가 확인·반증한다(`docs/arch/decisions.md`, 배포 스펙 §13).
 - **스펙 §5.4의 2 MiB 예산은 공개 API로 도달 불가다.** `limit` 최대 100(§5.2) ×
   content 최대 16 KiB(§4.2) = 1,638,400 bytes. Task 7은 스펙 수치를 그대로 두되
   예산을 주입 가능하게 만들어 로직만 검증하고, **도달 불가라는 사실을 못 박는 검사**를

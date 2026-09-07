@@ -156,6 +156,12 @@ gpg --batch --decrypt --passphrase-file /etc/overmind/backup.pass \
       pg_restore -U drill -d overmind --no-owner --no-acl
 ```
 
+이 드릴은 던져버릴 컨테이너에 고정된 `drill` 계정으로 붙는다 — 아래
+"실제 복구 순서"는 겉모습이 비슷해 보이지만 운영 `db` 서비스에
+`db.env`의 진짜 계정으로 붙는, 별개의 완결된 절차다. 실제 복구 상황에서
+이 드릴 명령을 그대로 손으로 옮겨 적지 않는다 — `-U drill -d overmind`를
+운영 DB에 잘못 쓰는 사고가 바로 이 구분이 막으려는 것이다.
+
 **`--no-owner --no-acl`를 둘 다 준다.** 이 드릴 컨테이너는 프로덕션 클러스터의
 소유권도 역할도 없다 -- `pgvector/pgvector:pg16`를 `POSTGRES_USER=drill` 하나로만
 띄웠을 뿐, `deploy/initdb`의 초기화 스크립트를 전혀 돌리지 않아 `OVERMIND_DB_USER`
@@ -190,23 +196,71 @@ docker rm -f overmind-restore-drill
 두면 Flyway가 새 볼륨에 빈 스키마를 먼저 만들어 버리고, 그 뒤에 하는
 `pg_restore`(커스텀 포맷, `--clean` 없음)는 이미 존재하는 객체와 충돌한다.
 
-**그래서 순서를 반드시 이렇게 강제한다:**
+**그래서 순서를 반드시 이렇게 강제한다.** 아래 명령은 위 복원 드릴과
+겉모습이 비슷하지만 별개다 — 드릴은 던져버릴 컨테이너에 고정된 `drill`
+계정으로 붙고, 여기는 운영 `db` 서비스에 `db.env`의 진짜 계정으로 붙는다.
+그대로 복사해서 쓸 수 있게 각 단계를 완결된 명령으로 적는다.
 
-1. `docker volume create overmind-pgdata` (새 볼륨 -- 기존 볼륨이 죽어서
-   복구하는 상황이라고 가정한다)
-2. `docker compose -f /opt/overmind/compose.yaml up -d db` -- **`db`만** 띄운다.
-   `app`은 아직 기동하지 않는다
-3. `db`가 healthy해질 때까지 기다린다:
-   `until docker compose -f /opt/overmind/compose.yaml ps db | grep -q healthy;
-   do sleep 1; done` (compose의 healthcheck가 `pg_isready`를 이미 5초 간격·
-   12회 재시도로 돈다 — 이 루프는 그 결과를 폴링할 뿐이다)
-4. 위 복원 드릴과 같은 방식으로 실제 운영 `db` 서비스에 복원한다:
-   `gpg --batch --decrypt ... | docker compose -f /opt/overmind/compose.yaml
-   exec -T db pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --no-acl`
-5. 행 수를 확인해 복원이 온전한지 판단한 **다음에만**
-   `docker compose -f /opt/overmind/compose.yaml up -d app`으로 `app`을 올린다
+1. 새 볼륨을 만든다(기존 볼륨이 죽어서 복구하는 상황이라고 가정한다):
 
-`db`만 먼저 올리고 `app`을 최후에 올리는 것이 전부다 -- Flyway가 빈 스키마를
+   ```bash
+   docker volume create overmind-pgdata
+   ```
+
+2. **`db`만** 띄운다. `app`은 아직 기동하지 않는다:
+
+   ```bash
+   docker compose -f /opt/overmind/compose.yaml up -d db
+   ```
+
+3. `db`가 healthy해질 때까지 기다린다(compose의 healthcheck가 `pg_isready`를
+   이미 5초 간격·12회 재시도로 돌고 있다 — 이 루프는 그 결과를 폴링할 뿐이다):
+
+   ```bash
+   until docker compose -f /opt/overmind/compose.yaml ps db | grep -q healthy; do
+       sleep 1
+   done
+   ```
+
+4. 운영 `db` 서비스에 복원한다. `<복원할 백업 파일>`을
+   `ls /var/backups/overmind/`로 고른 실제 파일 이름으로 바꾼다:
+
+   ```bash
+   set -a; source /etc/overmind/db.env; set +a   # POSTGRES_USER/POSTGRES_DB — 운영 계정. 드릴의 고정 drill 계정과 다르다
+
+   gpg --batch --decrypt --passphrase-file /etc/overmind/backup.pass \
+       /var/backups/overmind/<복원할 백업 파일>.dump.gpg \
+     | docker compose -f /opt/overmind/compose.yaml exec -T db \
+         pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --no-acl
+   ```
+
+5. 복원이 온전한지 확인한다:
+
+   ```bash
+   docker compose -f /opt/overmind/compose.yaml exec -T db \
+     psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+     'SELECT count(*), max(created_at) FROM observation'
+   ```
+
+   **여기서는 대조할 원본이 없다** — DB를 통째로 잃어서 복구하는 것이므로
+   드릴 때처럼 "운영 DB의 숫자와 같은가"를 볼 대상 자체가 없다. 대신 이
+   세 가지를 본다: ① `pg_restore`가 위 단계에서 에러 없이 끝났는가(에러
+   메시지가 없었으면 통과), ② `count(*)`가 0이 아니고 평소 써 온 데이터
+   양과 크게 어긋나지 않는가(감으로도 된다 — 0이거나 비정상적으로 작으면
+   의심한다), ③ `max(created_at)`이 복원한 파일 이름의 타임스탬프
+   (`overmind-<UTC타임스탬프>.dump.gpg`)보다 뒤가 아니고 그 근처인가(그
+   타임스탬프보다 한참 전이면 더 오래된 백업이 조용히 섞인 것이고, 그
+   타임스탬프보다 뒤면 애초에 있을 수 없는 값이라 뭔가 잘못됐다는 뜻이다).
+   셋 다 정상이면 다음 단계로 간다. 하나라도 이상하면 **`app`을 올리지
+   말고** 다른 백업 파일로 4번부터 다시 시도하거나 원인을 찾는다.
+
+6. 확인이 끝난 **다음에만** `app`을 올린다:
+
+   ```bash
+   docker compose -f /opt/overmind/compose.yaml up -d app
+   ```
+
+`db`만 먼저 올리고 `app`을 최후에 올리는 것이 핵심이다 -- Flyway가 빈 스키마를
 선점하기 전에 사람이 개입할 시간을 번다.
 
 ## 절대 하지 않는 것

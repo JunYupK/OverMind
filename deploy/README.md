@@ -82,9 +82,88 @@ sudo docker compose pull && sudo docker compose up -d
 롤백은 sha를 되돌리고 같은 두 줄이다. `latest`로 배포하지 않는다 — 무엇이 돌고
 있는지 알 수 없고 롤백 대상도 사라진다.
 
+## 백업
+
+### 설치
+
+```bash
+sudo cp -r deploy/backup /opt/overmind/
+sudo chmod +x /opt/overmind/backup/overmind-backup.sh
+
+# gpg 패스프레이즈. 값이 셸 히스토리에 남지 않는다.
+printf '%s\n' "$(openssl rand -base64 32)" | sudo tee /etc/overmind/backup.pass >/dev/null
+sudo chmod 0600 /etc/overmind/backup.pass
+
+sudo cp /opt/overmind/backup/overmind-backup.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now overmind-backup.timer
+sudo systemctl start overmind-backup.service    # 한 번 즉시 돌려본다
+journalctl -u overmind-backup -n 30
+```
+
+`overmind-backup.sh`는 `/etc/overmind/db.env`만 읽는다(`POSTGRES_USER`로
+`pg_dump`를 부른다 — 이유는 스크립트 상단 주석 참조: 부트스트랩 superuser는
+권한 검사를 우회하므로 앱 역할의 소유권에 기대는 것보다 더 완전한 덤프를
+보장한다). `app.env`는 이 스크립트가 열지 않지만 복구 전제조건으로 아래
+"박스 밖으로 내보내기"에 포함해야 한다.
+
+**`/etc/overmind/backup.pass`의 사본을 박스 밖에 둔다.** 이걸 잃으면 백업을
+복호화할 수 없다.
+
+### 박스 밖으로 내보내기
+
+로컬만으로는 백업이 아니다 — 인스턴스가 죽으면 백업도 같이 죽는다.
+OCI Always Free에 20 GB 오브젝트 스토리지가 포함된다. 버킷은 private으로 만들고
+(서버측 암호화는 기본), `oci os object put`으로 올린다. gpg는 그 위의 이중 방어라
+OCI 콘솔 접근권만으로는 내용을 볼 수 없다.
+
+M0 데이터는 1인 관찰 이벤트 로그라 덤프가 한동안 KB~MB 단위다. 용량은 제약이 아니다.
+
+**`.dump.gpg` 파일만으로는 복구가 끝나지 않는다.** 아래 두 파일의 사본도
+박스 밖에 따로 둔다 — 둘 다 DB 덤프 안에는 없는 값이다:
+
+- **`/etc/overmind/db.env`** — 복원할 때 붙을 계정(`POSTGRES_USER`/
+  `POSTGRES_PASSWORD`, `OVERMIND_DB_USER`/`OVERMIND_DB_PASSWORD`)이 여기
+  있다. 이게 없으면 복호화한 덤프가 있어도 무슨 계정으로 `pg_restore`를
+  부를지 알 수 없다.
+- **`/etc/overmind/app.env`** — `OVERMIND_CURSOR_SECRET`이 여기 있다. DB를
+  통째로 복원해도 이 값이 바뀌면 기존에 발급된 커서를 못 쓴다(데이터
+  손실은 아니지만 클라이언트는 페이지네이션을 처음부터 시작해야 한다).
+  이건 백업이 아니라 복구 전제조건이다 — 잃으면 DB는 복원돼도 서비스는
+  이전과 같은 상태로 복원되지 않는다.
+
+### 복원 드릴 — 이걸 해야 백업이다
+
+**운영 DB에 복원하지 않는다.** 별도 컨테이너에 복원하고 행 수를 대조한다.
+
+```bash
+docker run -d --name overmind-restore-drill \
+  -e POSTGRES_PASSWORD=drill -e POSTGRES_DB=overmind -e POSTGRES_USER=drill \
+  pgvector/pgvector:pg16
+sleep 10
+
+gpg --batch --decrypt --passphrase-file /etc/overmind/backup.pass \
+    /var/backups/overmind/<최신>.dump.gpg \
+  | docker exec -i overmind-restore-drill pg_restore -U drill -d overmind --no-owner
+
+# 원본과 대조 -- 원본 쪽 계정은 db.env의 부트스트랩 superuser다(백업을
+# 그 계정으로 떴으므로 조회도 같은 계정으로 맞춘다)
+set -a; source /etc/overmind/db.env; set +a
+docker compose -f /opt/overmind/compose.yaml exec -T db \
+  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc 'SELECT count(*) FROM observation'
+docker exec -i overmind-restore-drill \
+  psql -U drill -d overmind -tAc 'SELECT count(*) FROM observation'
+
+docker rm -f overmind-restore-drill
+```
+
+두 숫자가 같아야 한다. 다르면 백업이 불완전한 것이고, **절차를 고치지 말고 원인을 찾는다.**
+
 ## 절대 하지 않는 것
 
 - `docker compose down -v` — 볼륨이 external이라 삭제되지 않지만, 습관으로 만들지 않는다
 - `ports: "8080:8080"` — 접두사를 빼면 Docker가 firewalld를 우회해 인터넷에 연다
 - `POSTGRES_USER`와 `OVERMIND_DB_USER`를 같은 값으로 두는 것 — 앱이 superuser로
   접속하게 된다(스펙 §6.2 위반, `01-vector.sql`·`02-app-role.sh`의 전제가 깨짐)
+- 복원 드릴을 운영 `db` 서비스에 직접 하는 것 — 반드시 별도 컨테이너
+  (`overmind-restore-drill`)에 한다

@@ -1,0 +1,11 @@
+[Unit]
+Description=OverMind PostgreSQL 백업
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/overmind/backup/overmind-backup.sh
+# 실패를 journalctl -u overmind-backup 으로 본다.
+StandardOutput=journal
+StandardError=journal

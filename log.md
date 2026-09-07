@@ -9,10 +9,11 @@
 
 - **마일스톤:** **M0 — Task 0~14 전부 master 병합 완료.** 남은 것은 코드가 아니라
   실배포·수동 스모크·B-1~B-3 결정이다
-- **최근 갱신:** 2026-09-07 · Claude Code (원격 세션) — Task 6(CI 이미지 빌드)
-  구현: `.github/workflows/ci.yml`에 `publish` 잡 추가. `needs: [verify,
-  guardrails]`로 게이트를 통과한 커밋만 이미지가 되게 하고, `platforms:
-  linux/amd64,linux/arm64`로 aarch64 박스용 이미지를 같이 만든다
+- **최근 갱신:** 2026-09-07 · Claude Code (원격 세션) — Task 7(암호화 백업)
+  구현: `deploy/backup/overmind-backup.sh` + systemd `.service`/`.timer`,
+  `deploy/README.md`에 설치·박스 밖 반출·복원 드릴 절차 추가. 브리프가
+  Task 5 이전 파일 구조(`overmind.env` 단일 파일)를 참조하고 있어 실제
+  구조(`db.env`/`app.env` 이원화)에 맞게 다시 썼다 — 상세는 아래 진행 중 참조
 - **브랜치:** `claude/deploy-design` (`origin/master`의 `b0ebb3d`에서 시작)
 - **현재 검증:** 이 브랜치에서 T1~T6이 구현·커밋됐다. T5는 최초 구현이 리뷰에서
   Critical 2건(계정 모델 미추적, `.env` 덮어쓰기)으로, 1차 대응이 다시
@@ -276,12 +277,51 @@
   병합 후 첫 `publish` 실행이 진짜 검증이다. `integrationTest`(L2)는 이
   브랜치의 기존 제약대로 Testcontainers 초기화 단계에서 실패한다(이번
   변경과 무관).
+- **플랜 T7을 구현했다 — pg_dump + gpg 암호화 백업, systemd timer, 복원
+  드릴 절차.** **브리프가 Task 5 이전 파일 구조를 참조하고 있었다** —
+  `source /etc/overmind/overmind.env`, `$POSTGRES_USER`/`$POSTGRES_DB`를
+  가정했는데 그 파일은 이미 T5에서 `db.env`+`app.env`로 갈라졌다. 브리프
+  그대로 옮기면 스크립트 첫 줄에서 죽는다는 걸 구현 전에 확인하고 실제
+  구조에 맞춰 다시 썼다. **`pg_dump`는 db.env의 부트스트랩 superuser
+  (`POSTGRES_USER`)로 돌린다** — 앱 역할(`OVERMIND_DB_USER`)은 자기가
+  만든 테이블은 다 소유해 오늘은 문제없이 보이지만, `pg_dump`는 그 롤이
+  SELECT할 수 있는 객체만 담아 소유권에 기대는 방식은 미래에 다른 계정이
+  만든 객체가 조용히 빠지는 구멍이 된다. superuser는 권한 검사를 우회해
+  이 침묵을 원천 차단한다. **복구 전제조건도 파일 두 개로 나눠 적었다:**
+  `db.env`(복원 시 붙을 계정)와 `app.env`의 `OVERMIND_CURSOR_SECRET`
+  (잃으면 DB는 복원돼도 기존 커서를 못 쓴다) 둘 다 박스 밖 사본이
+  필요하다고 README·스크립트 주석 양쪽에 명시했다.
+  **빈 파일 검사를 실제로 실행해서 확인하다가 브리프의 전제 하나가 틀렸다는
+  걸 발견해 고쳤다.** 브리프는 "`pg_dump`가 실패하면 `gpg`가 그걸 0바이트로
+  통과시킨다"고 했지만, 실측해 보니 `gpg`는 빈 입력도 ~70바이트짜리 유효한
+  암호화 봉투로 감싼다 — 절대 0바이트가 아니다. 그리고 `set -euo pipefail`
+  때문에 `pg_dump`(사실은 `docker`) 실패가 파이프 전체를 비정상 종료시켜
+  `[ ! -s "$target" ]` 검사 줄에 도달하기도 전에 스크립트가 끝나 버렸다 —
+  그 결과 **"성공한 것처럼 보이는" 70바이트짜리 손상된 백업 파일이 지워지지
+  않고 디스크에 남았다**(먼저 트랩 없이 실행해 직접 목격함). `trap 'rm -f
+  "$target"' ERR`를 파이프 직전에 걸고 검사 통과 직후 `trap - ERR`로
+  해제해 고쳤다 — 이후 재실행하니 같은 실패 시나리오에서 exit 1과 함께
+  백업 디렉터리가 완전히 비어 있음을 확인했다(아래 커맨드로 재현 가능).
+  **증명(Step 4, 가짜 `docker`로 재현):**
+  `PATH="$tmp/bin:$PATH" COMPOSE_FILE=... BACKUP_DIR="$tmp/backups"
+  PASSPHRASE_FILE="$tmp/pass" DB_ENV_FILE="$tmp/db.env"
+  deploy/backup/overmind-backup.sh` → `EXIT CODE: 1`,
+  `ls "$tmp/backups"` → 빈 디렉터리. 브리프처럼 스크립트를 임시로 고쳤다
+  되돌리는 대신 `DB_ENV_FILE`을 다른 경로 변수들(`COMPOSE_FILE`,
+  `BACKUP_DIR`, `PASSPHRASE_FILE`)과 같은 방식으로 오버라이드 가능하게 만들어
+  스크립트 본문을 건드리지 않고 테스트했다. 정상 동작(성공 케이스)도 가짜
+  `docker`로 별도 확인 — exit 0, 파일 생성, 트랩이 해제돼 이후 보존 정리가
+  방금 만든 정상 백업을 지우지 않음을 확인했다. `bash -n` 문법 통과,
+  로컬에 `shellcheck` 없어 생략. **Docker/PostgreSQL이 없어 실제
+  `docker compose exec db pg_dump`·`pg_restore`·복원 드릴 자체는 이
+  환경에서 실행하지 못했다** — 위 증명은 셸 로직(파이프 실패 전파, 트랩,
+  빈 파일 검사)만 검증한다.
 
 ### 다음 할 일
 
-1. **플랜 `2026-09-04-overmind-deploy.md`를 계속 실행한다.** T1~T6 완료,
-   **T7(백업)부터**다. 실행 방식(subagent-driven / inline)은
-   사용자가 정한다
+1. **플랜 `2026-09-04-overmind-deploy.md`를 계속 실행한다.** T1~T7 완료,
+   **T8(배포 검증을 스모크 절차에 넣기)부터**다. 실행 방식(subagent-driven /
+   inline)은 사용자가 정한다
 2. **구현 전에 채워야 할 미확정 값** (스펙 §부록 B): `nproc`, `free -m`,
    `docker compose version`, 도메인. 앞의 셋은 `compose.yaml`의 `mem_limit`과
    JVM 힙을(T5가 주석으로 남겨 뒀다), 도메인은 Caddyfile·`resource`·Auth0

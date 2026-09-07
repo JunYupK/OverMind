@@ -89,7 +89,7 @@ M0 코드는 `master`에 전부 들어갔지만 아직 어디에서도 돌지 �
 
 Docker는 포트를 게시할 때 iptables `DOCKER` 체인에 규칙을 직접 삽입하고, **이 규칙이 firewalld/UFW보다 앞선다.** `"8080:8080"`이라고 쓰면 방화벽에서 8080을 막아두어도 `0.0.0.0:8080`이 인터넷에 열린다. C-1이 조용히 깨지는 경로다. 루프백 바인딩은 이 문제를 원천 제거한다.
 
-§12-1에서 실제로 깨뜨려 확인한다.
+`docs/harness/70-m0-smoke.md`의 **D1**에서 실제로 깨뜨려 확인한다(§12의 표는 이제 설계 시점 초안일 뿐이다 — §12 도입부 참고).
 
 ### 4.2 DB는 포트를 게시하지 않는다
 
@@ -207,7 +207,7 @@ Flyway가 앱 기동 시 실행한다 (`spring.flyway.enabled: true`). V1이 pgv
 
 **정정(Task 5, D-N) — 이 문장은 처음부터 참이었던 게 아니다.** 최초 배포 자산 초안은 `OVERMIND_DB_USER`/`OVERMIND_DB_PASSWORD`를 `POSTGRES_USER`/`POSTGRES_PASSWORD`와 같은 값으로 쓰라고 안내했다. 그대로 배포했다면 앱은 클러스터 superuser로 접속했을 것이다 — "앱 계정 하나를 쓴다. superuser가 아니다"라는 원래 문장을 정면으로 어겼을 것이다. 리뷰가 이를 Critical로 잡아 계정을 분리했다: `deploy/db.env.example`이 부트스트랩 superuser 값을 담고, `deploy/initdb/02-app-role.sh`가 컨테이너 최초 기동 시(빈 볼륨일 때만) `OVERMIND_DB_USER`를 만든다. 경고 산문("달라야 한다")만으로는 아무 계층도 에러를 내지 않는다는 것이 3차 리뷰에서 재발견되어, `02-app-role.sh`는 두 이름이 같으면 `psql` 호출 전에 `exit 1`로 기동 자체를 거부한다.
 
-**지금은 이 문장이 참이다: 앱 계정 하나를 쓴다. superuser가 아니다.** 다만 처음부터 그랬던 것은 아니라는 것을 기록해 둔다 — 참이 되도록 만든 것이 D-N이고, §6.3·§12-3이 그 근거로 삼던 전제도 D-N 이전에는 실제로 거짓이었다.
+**지금은 이 문장이 참이다: 앱 계정 하나를 쓴다. superuser가 아니다.** 다만 처음부터 그랬던 것은 아니라는 것을 기록해 둔다 — 참이 되도록 만든 것이 D-N이고, §6.3·`70-m0-smoke.md`의 D3이 그 근거로 삼던 전제도 D-N 이전에는 실제로 거짓이었다.
 
 ### 6.3 pgvector는 superuser를 요구한다 — 실증된 제약
 
@@ -228,7 +228,7 @@ relocatable = true
 
 **대응:** 확장을 `docker-entrypoint-initdb.d/01-vector.sql`에서 `postgres` superuser로 미리 만든다. 그러면 Flyway의 `CREATE EXTENSION IF NOT EXISTS vector`는 이미 존재하는 확장을 보고 통과한다 — PostgreSQL이 존재 검사를 권한 검사보다 먼저 하기 때문이다.
 
-**이 순서는 가정이 아니라 검증 항목이다** (§12-3). initdb 스크립트 없이 먼저 띄워 Flyway가 실패하는 것을 본 뒤에 스크립트를 넣는다. **이 검사는 앱 계정이 진짜 non-superuser일 때만 의미가 있다** — D-N 이전처럼 앱 계정이 `POSTGRES_USER`와 같은 값이면 이 실패 자체가 재현되지 않는다(superuser는 애초에 권한 오류에 걸리지 않는다). `docs/harness/70-m0-smoke.md`의 D3이 이 조건까지 반영해 다시 쓰였다(Task 8).
+**이 순서는 가정이 아니라 검증 항목이다** (`docs/harness/70-m0-smoke.md`의 D3). initdb 스크립트 없이 먼저 띄워 Flyway가 실패하는 것을 본 뒤에 스크립트를 넣는다. **이 검사는 앱 계정이 진짜 non-superuser일 때만 의미가 있다** — D-N 이전처럼 앱 계정이 `POSTGRES_USER`와 같은 값이면 이 실패 자체가 재현되지 않는다(superuser는 애초에 권한 오류에 걸리지 않는다). `docs/harness/70-m0-smoke.md`의 D3이 이 조건까지 반영해 다시 쓰였다(Task 8).
 
 ## 7. 코드 격차 — 디스커버리
 
@@ -322,7 +322,7 @@ C-3이 관리형 제공자를 요구한다. Auth0를 고른 이유:
 
 대응: 테넌트에 **Default Audience**를 설정한다. 이 테넌트는 OverMind 전용이므로 테넌트 전체에 같은 audience가 걸리는 것이 문제가 되지 않는다.
 
-§12-6이 이것을 실측한다.
+`docs/harness/70-m0-smoke.md`의 **D8**이 이것을 실측한다.
 
 ### 8.4 반드시 일치해야 하는 값
 
@@ -506,7 +506,7 @@ M0 데이터는 1인 관찰 이벤트 로그라 덤프가 한동안 KB~MB 단위
 
 ### 11.4 복원 드릴
 
-**한 번도 복원해보지 않은 백업은 백업이 아니다.** §12-9(검증)에 항목으로 둔다.
+**한 번도 복원해보지 않은 백업은 백업이 아니다.** `docs/harness/70-m0-smoke.md`의 **D10**(검증)에 항목으로 둔다.
 
 ## 12. 검증 — 깨뜨려서 확인한다
 
@@ -541,9 +541,9 @@ M0 데이터는 1인 관찰 이벤트 로그라 덤프가 한동안 KB~MB 단위
 | D-J | 인가 서버는 Auth0 무료 티어. 실측이 깨지면 MCP 전용 벤더로 이동 | §8.1 — 공개 구축기 존재, 교체 비용 근사 0 |
 | D-K | 이미지는 커밋 sha로 고정 배포한다. `latest`는 편의용 | §10.4 — 롤백 가능성 |
 | D-L | 백업은 pg_dump + gpg + OCI 오브젝트 스토리지. 복원 드릴을 검증 항목에 포함 | §11 — C-5 |
-| D-M | `RequiredSettings.Validation`(`@Profile("production")`)은 중복 방어다. 기동 차단은 `SecurityConfig.jwtDecoder`의 `requireComplete()` 호출이 담당한다 | 코드 확인. §12-4에서 실증한다 |
+| D-M | `RequiredSettings.Validation`(`@Profile("production")`)은 중복 방어다. 기동 차단은 `SecurityConfig.jwtDecoder`의 `requireComplete()` 호출이 담당한다 | 코드 확인. `docs/harness/70-m0-smoke.md`의 D4에서 실증한다 |
 
-D-M은 **아직 실증되지 않은 판단이다.** 코드 읽기로는 `jwtDecoder`가 싱글턴 빈이라 기동 시 `requireComplete()`가 동기 호출되어 프로파일과 무관하게 실패해야 한다. §12-4가 이를 확인하거나 반증한다. 반증되면 이 행을 수정한다.
+D-M은 **아직 실증되지 않은 판단이다.** 코드 읽기로는 `jwtDecoder`가 싱글턴 빈이라 기동 시 `requireComplete()`가 동기 호출되어 프로파일과 무관하게 실패해야 한다. `docs/harness/70-m0-smoke.md`의 **D4**가 이를 확인하거나 반증한다(§12의 표는 설계 시점 초안이라 이제 이 스모크 문서가 운영 절차다). 반증되면 이 행을 수정한다.
 
 ## 14. 배제 범위
 

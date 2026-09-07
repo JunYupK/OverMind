@@ -9,20 +9,26 @@
 
 - **마일스톤:** **M0 — Task 0~14 전부 master 병합 완료.** 남은 것은 코드가 아니라
   실배포·수동 스모크·B-1~B-3 결정이다
-- **최근 갱신:** 2026-09-04 · Claude Code (원격 세션) — Task 5 리뷰 대응:
-  DB 계정 모델을 부트스트랩 superuser와 앱 전용 non-superuser 역할로 분리
+- **최근 갱신:** 2026-09-04 · Claude Code (원격 세션) — Task 5 리뷰 대응 2차:
+  `02-app-role.sh`가 role/password를 셸 문자열 접합 대신 psql 변수
+  (`format()`의 `%I`/`%L`)로 SQL에 넘기도록 고쳤다
 - **브랜치:** `claude/deploy-design` (`origin/master`의 `b0ebb3d`에서 시작)
 - **현재 검증:** 이 브랜치에서 T1~T5가 구현·커밋됐다. T5는 최초 구현이 리뷰에서
-  Critical 2건으로 반려됐고(계정 모델 미추적, `.env` 덮어쓰기), 리뷰 대응
-  커밋으로 재검증했다: `python3 -c "import yaml; ..."`(compose.yaml 구조),
-  `bash -n`(02-app-role.sh 문법), `grep -nE '^[A-Z_]+=.+' deploy/*.env.example`
-  (두 env 예시 전부 매치 0건), `./gradlew guardrails`(`-PbaseRef=origin/master`,
-  11/11 PASS). **로컬에 gitleaks가 없어 `gitleaksScan`은 계속 생략된다**
-  ("통과"가 아니라 "안 돌았다") — 값이 전부 비어 있음은 grep 실측으로
-  대신했다. Docker가 없어 `docker build`·`docker compose config`·실제
-  기동은 실행하지 못했다 — 계정 분리·역할 GRANT가 실제로 작동하는지는
-  이 환경에서 실측 불가다. L2(`integrationTest`)는 Testcontainers 초기화
-  단계에서 실패한다(기존 제약, 이번 변경과 무관). 게이트 최종 판정은 CI가 한다
+  Critical 2건(계정 모델 미추적, `.env` 덮어쓰기)으로, 1차 대응이 다시
+  Important 1건(SQL 문자열 접합 취약성)으로 반려됐다. 2차 대응까지 재검증한
+  것: `bash -n`(02-app-role.sh 문법), `grep -nE '^[A-Z_]+=.+'
+  deploy/*.env.example`(두 env 예시 전부 매치 0건), `./gradlew guardrails`
+  (`-PbaseRef=origin/master`, 11/11 PASS), 그리고 헤레독 확장 규칙만 떼어낸
+  스크립트로 "따옴표 없는 예전 형태는 작은따옴표·큰따옴표가 든 값에서
+  SQL 텍스트가 깨지고, 따옴표 있는 새 형태는 셸이 아예 건드리지 않는다"를
+  직접 실행해 보였다. **로컬에 gitleaks가 없어 `gitleaksScan`은 계속
+  생략된다**("통과"가 아니라 "안 돌았다") — 값이 전부 비어 있음은 grep
+  실측으로 대신했다. Docker가 없어 `docker build`·`docker compose config`·
+  실제 기동·psql 자체의 파싱 결과는 실행하지 못했다 — 계정 분리·역할
+  GRANT·이번 quoting 수정이 실제 PostgreSQL 서버 앞에서도 그대로
+  작동하는지는 이 환경에서 실측 불가다. L2(`integrationTest`)는
+  Testcontainers 초기화 단계에서 실패한다(기존 제약, 이번 변경과 무관).
+  게이트 최종 판정은 CI가 한다
 
 ### 진행 중
 
@@ -187,6 +193,28 @@
   `POSTGRES_USER`=`OVERMIND_DB_USER` 항목을 추가했다. **Docker가 없어 실제
   기동·역할 생성·GRANT 효과는 이 환경에서 실측하지 못했다** — YAML 구조,
   `bash -n` 문법, env 값 공백만 정적으로 확인했다.
+- **1차 대응이 재리뷰에서 Important 1건으로 다시 걸렸다 — `02-app-role.sh`가
+  role/password를 셸에서 SQL 문자열로 접합하고 있었다.** 값은 공격이 아니라
+  운영자가 `db.env`에 직접 쓴 것이지만, 그 값에 작은따옴표나 큰따옴표가
+  하나만 있어도 SQL 리터럴·식별자가 그 자리에서 깨진다 — `ON_ERROR_STOP=1`
+  + `set -Eeuo pipefail`이 즉시 컨테이너 초기화를 중단시키고, 볼륨이
+  external이라 재시도도 손으로 지우고 다시 만들어야 하는, 정확히 한 번만
+  도는 경로다. **고쳤다:** `psql -v role=... -v pw=... -v db=...`로 값을
+  psql 변수로만 넘기고, SQL 쪽은 `format('CREATE ROLE %I ... PASSWORD %L',
+  :'role', :'pw')`처럼 `%I`(식별자)·`%L`(리터럴)로 이스케이핑을 PostgreSQL에
+  맡겼다. 헤레독 구분자를 `<<-'EOSQL'`(따옴표 있음)로 바꿔 셸이 안의 `$`를
+  아예 건드리지 않게 했다. `GRANT` 두 줄도 같은 방식(`SELECT format(...)
+  \gexec`)으로 바꿨다. **셸 확장 규칙만 떼어내 직접 증명했다** — 값에
+  `p'w"d`(작은따옴표+큰따옴표)를 넣고 예전 헤레독과 새 헤레독을 각각 `cat`으로
+  펼쳐 보니, 예전 형태는 `PASSWORD ''p'w"d'''`처럼 SQL 문자열이 중간에서
+  끊어지는 것이 그대로 보였고, 새 형태는 `:'role'`/`:'pw'` 자리가 전혀
+  건드려지지 않은 채로 나왔다(셸이 손대지 않았다는 뜻 — psql이 안전하게
+  치환한다). 식별자 쪽(역할 이름에 큰따옴표)도 같은 방식으로 재현해 예전
+  형태만 깨짐을 확인했다. `deploy/db.env.example`에 `OVERMIND_DB_PASSWORD`
+  생성 힌트(`openssl rand -base64 32` — 따옴표 문자를 안 만든다)를
+  추가했다(벨트+브레이스, 진짜 수정을 대체하지 않음). **여전히 psql/실제
+  PostgreSQL 서버가 이 SQL을 어떻게 파싱하는지는 이 환경에서 실측하지
+  못했다** — 셸 확장 단계까지만 증명했다.
 
 ### 다음 할 일
 

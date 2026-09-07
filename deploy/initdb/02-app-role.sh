@@ -19,6 +19,15 @@
 #
 # 역할 생성은 idempotent하다(\gexec 조건부 생성) — 재실행해도 에러 없이
 # 통과한다. 비밀번호를 echo하지 않는다.
+#
+# **role/pw 값을 SQL 텍스트에 셸로 접합하지 않고 psql 변수(-v)로 넘긴다.**
+# db.env 값은 공격자 입력이 아니라 운영자가 직접 쓴 값이지만, 거기에
+# 작은따옴표나 큰따옴표가 하나만 있어도 문자열 접합 방식은 SQL 리터럴/
+# 식별자를 그 자리에서 깨뜨린다 — ON_ERROR_STOP=1 + set -e가 즉시 컨테이너
+# 초기화를 중단시키고, 볼륨이 external이라 재시도도 손으로 지우고 다시
+# 만들어야 한다. format()의 %I(식별자)·%L(리터럴)이 이스케이핑을 정확히
+# 하므로, 다음에 이 파일을 고칠 사람은 이걸 "간단하게" 문자열 접합으로
+# 되돌리지 말 것.
 set -Eeuo pipefail
 
 : "${POSTGRES_USER:?POSTGRES_USER가 db.env에 없습니다}"
@@ -26,15 +35,25 @@ set -Eeuo pipefail
 : "${OVERMIND_DB_USER:?OVERMIND_DB_USER가 db.env에 없습니다}"
 : "${OVERMIND_DB_PASSWORD:?OVERMIND_DB_PASSWORD가 db.env에 없습니다}"
 
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+# 헤레독 구분자를 따옴표로 감쌌다(<<-'EOSQL') — 셸이 안의 $를 전혀 건드리지
+# 않게 하려는 의도다. 값은 -v로만 psql에 전달되고, SQL 쪽에서는 :'role'
+# 같은 psql 변수 치환이 PostgreSQL이 이해하는 안전한 리터럴로 바꿔 준다.
+psql -v ON_ERROR_STOP=1 \
+     -v role="$OVERMIND_DB_USER" \
+     -v pw="$OVERMIND_DB_PASSWORD" \
+     -v db="$POSTGRES_DB" \
+     --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-'EOSQL'
 	-- 이미 있으면 아무것도 하지 않는다(idempotent). \gexec가 SELECT 결과를
 	-- SQL 명령으로 실행한다 — WHERE 조건이 거짓이면 빈 결과라 아무 것도 안 돈다.
-	SELECT 'CREATE ROLE "$OVERMIND_DB_USER" WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD ''$OVERMIND_DB_PASSWORD'''
-	WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$OVERMIND_DB_USER') \gexec
+	-- format()의 %I/%L이 식별자/리터럴을 각각 올바르게 이스케이프하므로
+	-- role·pw에 따옴표가 들어 있어도 안전하다.
+	SELECT format('CREATE ROLE %I WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %L', :'role', :'pw')
+	WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'role') \gexec
 
 	-- PostgreSQL 15부터 public 스키마가 PUBLIC에게 CREATE를 기본으로 주지
 	-- 않는다. 이 GRANT가 없으면 Flyway의 모든 마이그레이션이 permission
-	-- denied for schema public으로 실패한다.
-	GRANT CONNECT ON DATABASE "$POSTGRES_DB" TO "$OVERMIND_DB_USER";
-	GRANT USAGE, CREATE ON SCHEMA public TO "$OVERMIND_DB_USER";
+	-- denied for schema public으로 실패한다. GRANT에는 format()을 직접 쓸
+	-- 수 없어 SELECT ... \gexec로 같은 방식을 적용한다.
+	SELECT format('GRANT CONNECT ON DATABASE %I TO %I', :'db', :'role') \gexec
+	SELECT format('GRANT USAGE, CREATE ON SCHEMA public TO %I', :'role') \gexec
 EOSQL

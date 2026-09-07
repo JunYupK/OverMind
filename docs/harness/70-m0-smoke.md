@@ -26,6 +26,10 @@ M0가 실제로 도는지 **사람이 손으로** 확인하는 절차다.
 - forwarded 헤더는 지정한 프록시에서만 신뢰한다.
 - 관리형 OIDC 발급자에서 다음 설정을 채운다. **production 프로파일에서 하나라도 비면
   기동이 실패해야 한다** — 그것이 8번 항목이다.
+- Auth0를 쓴다면 **테넌트 Default Audience를 API Identifier와 같게 설정한다.**
+  Claude는 OAuth 요청에 `resource`만 보내고 `audience`를 보내지 않아서, 이 설정이
+  없으면 Auth0가 JWT 대신 opaque 토큰을 발급하고 `NimbusJwtDecoder`가 파싱조차
+  하지 못한다. D8이 이것을 확인한다.
 
 ```
 overmind.security.issuer           HTTPS 절대 URI
@@ -51,6 +55,37 @@ overmind.security.cursor-secret    UTF-8 32 bytes 이상
 | 8 | 위 필수 설정 넷 중 하나를 비우고 production 프로파일로 기동 | **기동 실패.** 뜬 채로 요청을 받으면 안 된다 | | |
 | 9 | 애플리케이션 로그를 훑는다 | content·source id·idempotency key·project key·토큰·claim·cursor 원문이 **하나도 없다** | | |
 | 10 | 애플리케이션 포트로 직접 접속 시도 | 외부에서 닿지 않는다 | | |
+
+## 배포 검증 — 깨뜨려서 확인한다
+
+설계 근거는 `docs/superpowers/specs/2026-09-04-overmind-deploy-design.md` §12에 있다.
+
+**"확인했다"가 아니라 "막히는 것을 봤다"를 채운다.** 방어가 통과하는 것만 보면
+그 방어가 실제로 무언가를 막는지 알 수 없다. 아래 항목 중 여럿이 일부러
+깨뜨려 보라고 요구하는 이유다.
+
+| # | 확인할 것 | 어떻게 | 확인일 | 확인자 |
+|---|---|---|---|---|
+| D1 | 앱 포트가 외부에 안 보인다 | 외부 호스트에서 `curl http://<공인IP>:8080/mcp` → 거부. **그다음 compose의 `127.0.0.1:` 접두사를 빼고 재기동해 외부에서 응답이 오는 것을 확인한 뒤 되돌린다** | | |
+| D2 | DB가 외부에 안 보인다 | 외부 호스트에서 `nc -vz <공인IP> 5432` → 거부 | | |
+| D3 | pgvector 두 계정 분리가 실제로 막는다 | 운영 `overmind-pgdata`가 아닌 임시 볼륨으로, `deploy/initdb`에서 `01-vector.sql`만 빼고(`02-app-role.sh`는 그대로 두고) 기동 → 앱은 `OVERMIND_DB_USER`(NOSUPERUSER)로 붙으므로 Flyway V1(`CREATE EXTENSION IF NOT EXISTS vector`)이 permission denied로 실패하는 것을 확인. 볼륨을 지우고 다시 만들어 `01-vector.sql`을 되돌린 뒤 재기동해 통과를 확인하고 임시 볼륨을 정리한다 | | |
+| D4 | 어느 게이트가 기동을 막는가 | issuer를 비우고 production 프로파일로 기동 → 실패 확인. 그다음 `SPRING_PROFILES_ACTIVE=production`을 빼고 반복. **기대: 둘 다 실패한다** — `SecurityConfig.jwtDecoder`가 싱글턴 빈이라 기동 시 `requireComplete()`가 프로파일과 무관하게 동기 호출되기 때문이다(그러면 `RequiredSettings.Validation`은 중복 방어이고 스펙 §13 D-M이 맞다). **프로파일을 뺐을 때 기동에 성공하면** `Validation`이 진짜 게이트였다는 뜻이고 D-M은 틀렸다 — 스펙을 고친다 | | |
+| D5 | 디스커버리 체인 | 토큰 없이 `curl -i -X POST https://overmind.<도메인>/mcp` → 401 + `WWW-Authenticate`에 `resource_metadata="https://..."`. 그 URL을 `curl` → 응답 JSON의 `authorization_servers`에 Auth0 issuer, `tls_client_certificate_bound_access_tokens`는 `true`가 아니다(mTLS를 쓰지 않으므로) | | |
+| D6 | 공개 URL이 루프백이 아니다 | D5에서 받은 401의 `resource_metadata` 값과 메타데이터 문서의 `resource` 값이 **둘 다 `https://overmind.<도메인>`으로 시작한다.** `127.0.0.1`이나 `http://`가 보이면 forwarded 헤더 설정(`server.forward-headers-strategy`/`internal-proxies`)이 안 먹은 것이다 | | |
+| D7 | forwarded 헤더 신뢰 경계 | 박스 밖에서 `curl -H 'X-Forwarded-Host: evil.example' https://overmind.<도메인>/.well-known/oauth-protected-resource/mcp` → 응답의 `resource`에 `evil.example`이 **없어야 한다** | | |
+| D8 | Auth0가 JWT를 준다 (opaque가 아니라) | 토큰이 `.`으로 세 조각인지 확인하고 payload를 디코드해 `aud`/`sub`/`scope`를 본다. **세 조각이 아니면 테넌트 Default Audience가 안 걸린 것이다** | | |
+| D9 | sub allowlist가 막는다 | Auth0에 두 번째 사용자를 만들어 토큰을 받고 `/mcp` 호출 → 401. 막지 못하면 allowlist는 장식이다 | | |
+| D10 | 백업 복원 드릴 | `deploy/README.md`의 "복원 드릴 — 이걸 해야 백업이다" 절을 그대로 따른다(별도 컨테이너 `overmind-restore-drill`에 복원 후 `observation` 행 수를 원본과 대조). 운영 `db` 서비스나 그 아래 "실제 복구 순서" 절과 혼동하지 않는다 | | |
+| D11 | 재부팅 생존 | `sudo reboot` 후 사람 개입 없이 Caddy·docker·compose가 모두 복귀하는지 | | |
+| D12 | 이미지가 게이트를 통과한 것인가 | 돌고 있는 태그의 sha로 GitHub Actions를 찾아 `verify`·`guardrails`가 초록인지 확인 | | |
+| D13 | 계정 동일 가드가 실제로 막는다 | `db.env`에서 `OVERMIND_DB_USER`를 `POSTGRES_USER`와 같은 값으로 맞춘 임시 볼륨으로 기동 → `02-app-role.sh`가 즉시 `exit 1`로 컨테이너 초기화를 중단하는 것을 `docker compose logs db`에서 확인한다. 두 값을 다시 다르게 하고 정상 기동을 확인한다 | | |
+
+**D4와 D8은 결과를 모르는 검사다.** 나머지는 확인이지만 이 둘은 발견이 될 수 있다.
+결과가 예상과 다르면 스펙 §13의 해당 결정을 고친다.
+
+**D7은 자동 테스트가 대신할 수 없다.** MockMvc는 Tomcat `RemoteIpValve`를 거치지
+않아서 `internal-proxies` 값을 `.*`로 바꿔도 L1이 통과한다. 신뢰 경계는 여기서만
+확인된다.
 
 ## 실패했을 때
 

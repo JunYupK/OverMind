@@ -11,6 +11,31 @@
   이 브랜치에서 전부 구현 완료. 전체 브랜치 리뷰의 수정 파도(Critical 2건 +
   Important 4건 + Minor 4건)도 적용 완료.** 남은 것은 코드가 아니라 실배포·
   손 작업(H1~H7)·수동 스모크(`docs/harness/70-m0-smoke.md`)·B-1~B-3 결정이다
+- **최근 갱신:** 2026-09-10 · Claude Code (원격 세션) — **첫 실배포 완료.**
+  Oracle Cloud Ampere A1(Ubuntu)에 이미지 태그 `9f2d5f6`으로 올리고
+  `https://overmind.flight-friend.com/mcp`로 공개했다. 실사용 클라이언트 두 개
+  (Claude Chat, Claude Code)가 같은 엔드포인트에 붙어 **교차 저장·조회가 실제로
+  동작하는 것을 확인했다**(스모크 4). 스모크 1·3·4·5·8과 배포 검증 D5·D6·D7·D8·D9·D12를
+  `70-m0-smoke.md`에 기록했다.
+  **스펙에 없던 것 넷이 실배포에서 드러났다.** ① Auth0는 RFC 8707 `resource` 값을
+  그대로 audience 조회 키로 쓴다 — API Identifier가 `https://…/mcp`(경로 포함)와
+  같지 않으면 `Service not found`로 거부한다. 스펙 §8.3의 "Claude가 audience를
+  안 보내므로 Default Audience로 채운다"는 전제가 절반만 맞았다(**D-P**).
+  ② DCR로 등록된 Auth0 클라이언트는 third-party라 first-party API에 클라이언트별
+  개별 승인이 필요하고, 재등록마다 `tpc_` ID가 바뀌어 승인이 유지되지 않는다 —
+  스펙 §8.1이 "MCP가 필요로 하는 것과 정확히 일치한다"고 본 판단이 틀렸다.
+  고정 OAuth 클라이언트(Client ID + **Secret**)로 바꿨다(**D-Q**).
+  ③ `remember_memory`가 `source.conversation_id`/`message_id`를 필수로 받는데
+  **MCP 프로토콜은 호스트의 대화·메시지 id를 도구 인자로 노출하지 않는다.** 클라이언트가
+  정직하게 채울 수 없어 실사용에서 저장이 거부됐다. `V3` 마이그레이션이 필요한 변경이라
+  M1 결정으로 등재했다(**D-R**, 열려 있음).
+  ④ 호스트 프로세스는 Docker의 iptables 우회를 받지 못한다 — 컨테이너 Caddy에서
+  호스트 Caddy로 옮기자 80/443이 INPUT 체인의 REJECT에 걸려 ACME가 실패했다.
+  기존 ACCEPT 규칙 4개는 REJECT **뒤에** 있어 아무것도 하지 않고 있었다(설정돼 있는
+  것처럼 보이지만 도달 불가능한 게이트).
+  **D4는 절반만 관측했다** — production 프로파일에서 빈 issuer가 막히는 것은 봤지만
+  프로파일을 뺀 쪽은 실행하지 못했다. D-M은 여전히 열려 있다.
+  배포된 태그 `9f2d5f6`은 현재 master(`763faa2`)보다 한 커밋 뒤지만 문서 전용 차이다.
 - **최근 갱신:** 2026-09-10 · Codex — **루트 README 초안 작성.** 현재 M0의
   제품 범위, MCP 도구, 인증·보안, 로컬 검증, 배포 전제, 백업·복구, 저장소 구조와
   로드맵을 처음 방문한 사용자가 따라갈 수 있는 한 문서로 정리했다. 운영 명령은

@@ -291,7 +291,8 @@ C-3이 관리형 제공자를 요구한다. Auth0를 고른 이유:
 
 - 무료 티어 25k MAU — 1인 사용에 충분
 - **Claude.ai 원격 MCP + Auth0 조합의 공개 구축기가 여러 건 있다.** 혼자 삽질할 영역이 가장 좁다
-- DCR 지원. DCR로 등록된 앱은 third-party로 분류되어 `authorization_code` + `refresh_token`만 쓸 수 있는데, 이는 MCP가 필요로 하는 것과 정확히 일치한다
+- ~~DCR 지원. DCR로 등록된 앱은 third-party로 분류되어 `authorization_code` + `refresh_token`만 쓸 수 있는데, 이는 MCP가 필요로 하는 것과 정확히 일치한다~~
+  **정정(2026-09-10 실배포) — 이 판단은 틀렸다.** third-party로 분류된다는 사실관계는 맞지만 결론이 반대다. Auth0에서 third-party 클라이언트는 first-party API에 **클라이언트별 개별 승인** 없이는 접근하지 못하고(`invalid_request: Client "tpc_…" is not authorized to access resource server`), 재등록마다 `tpc_` ID가 바뀌므로 개별 승인이 구조적으로 유지되지 않는다. **DCR을 쓰지 않고 고정 OAuth 클라이언트를 쓴다 — D-Q 참조.**
 - issuer가 `/.well-known/openid-configuration`을 제공하므로 `NimbusJwtDecoder.withIssuerLocation`이 그대로 동작한다
 
 **교체 비용이 거의 0이라는 점이 이 선택을 되돌릴 수 있게 만든다.** 환경변수 3개(issuer/audience/allowedSubject)만 바꾸면 다른 제공자로 옮긴다. 지금 완벽한 벤더를 고르는 데 시간을 쓰지 않는다.
@@ -310,7 +311,7 @@ C-3이 관리형 제공자를 요구한다. Auth0를 고른 이유:
 | 3 | 클라이언트 | 그 URL `GET` | **G-1** |
 | 4 | OverMind | `{resource, authorization_servers, scopes_supported}` | **G-3** |
 | 5 | 클라이언트 | Auth0 `/.well-known/openid-configuration` 조회 | Auth0 제공 |
-| 6 | 클라이언트 | DCR로 `client_id` 발급 | Auth0 설정 |
+| 6 | 클라이언트 | ~~DCR로 `client_id` 발급~~ → **운영자가 미리 만든 고정 `client_id`/`client_secret`을 클라이언트 설정에 넣는다** (D-Q) | Auth0 설정 |
 | 7 | 클라이언트 | authorization_code + PKCE, `resource=https://overmind.<도메인>/mcp` | 있음 |
 | 8 | Auth0 | JWT 발급 — `aud`, `sub`, `scope` | **§8.3** |
 | 9 | OverMind | `iss`/`aud`/`sub`/`exp` 검증 | 있음 |
@@ -318,15 +319,19 @@ C-3이 관리형 제공자를 요구한다. Auth0를 고른 이유:
 
 ### 8.3 1순위 함정 — opaque 토큰
 
-**Claude는 `resource`(RFC 8707)를 보내지만 `audience`는 보내지 않는다.** Auth0는 `audience`를 받지 못하면 JWT가 아니라 **불투명 토큰**을 발급한다. 그러면 `NimbusJwtDecoder`가 파싱조차 못 한다.
+**정정(2026-09-10 실배포).** 이 절의 전제가 절반만 맞았다.
 
-대응: 테넌트에 **Default Audience**를 설정한다. 이 테넌트는 OverMind 전용이므로 테넌트 전체에 같은 audience가 걸리는 것이 문제가 되지 않는다.
+Claude가 `resource`(RFC 8707)를 보내는 것은 맞다. 그러나 **Auth0는 그 `resource` 값을 그대로 audience 조회 키로 쓴다** — 받지 못한 것처럼 굴지 않는다. 그래서 그 값과 정확히 같은 Identifier를 가진 API가 없으면 `access_denied: Service not found: <resource 값>`으로 **거부한다**. Default Audience는 audience가 **아예 오지 않을 때만** 발동하므로 이 경로에서는 쓰이지 않는다.
+
+따라서 실제 요구사항은 이것이다 — **Auth0 API Identifier = 메타데이터 문서의 `resource` 값 = `https://overmind.<도메인>/mcp`(경로 포함).** 오리진만으로 만들면 안 된다. Auth0 API Identifier는 생성 후 변경할 수 없으므로 잘못 만들었으면 새로 만들어야 한다(D-P).
+
+Default Audience는 여전히 같은 값으로 맞춰 둔다 — audience 없이 오는 클라이언트를 위한 보험이다. 그 경우 원래 서술대로 불투명 토큰 문제가 실재한다.
 
 `docs/harness/70-m0-smoke.md`의 **D8**이 이것을 실측한다.
 
 ### 8.4 반드시 일치해야 하는 값
 
-- Auth0 API **Identifier** = 테넌트 **Default Audience** = `OVERMIND_OIDC_AUDIENCE`
+- Auth0 API **Identifier** = 테넌트 **Default Audience** = `OVERMIND_OIDC_AUDIENCE` = **메타데이터 문서의 `resource` 값** = `https://overmind.<도메인>/mcp` — **경로 `/mcp`를 포함한다**(D-P). 끝에 `/`를 붙이지 않는다
 - Auth0 **Domain** = `OVERMIND_OIDC_ISSUER` (HTTPS 절대 URI, 끝 `/` 포함)
 - Auth0의 내 `user_id` = `OVERMIND_ALLOWED_SUBJECT`
 
@@ -336,7 +341,9 @@ C-3이 관리형 제공자를 요구한다. Auth0를 고른 이유:
 
 MCP 2026-07-28 스펙이 DCR을 deprecate하고 **CIMD**(Client ID Metadata Documents)로 이동했다. 하위 호환으로 계속 동작하며 제거는 빨라야 2027-07-28이다.
 
-**지금 DCR로 가는 것은 타당하다.** 다만 이 사실을 기록해두어, 제공자를 재검토할 때 CIMD 지원을 기준에 넣는다. 서버 쪽 변경은 없다 — CIMD는 클라이언트와 인가 서버 사이의 문제다.
+~~**지금 DCR로 가는 것은 타당하다.**~~ **정정(2026-09-10) — DCR로 가지 않는다(D-Q).** deprecation 시점 때문이 아니라 Auth0에서 DCR 클라이언트가 third-party로 분류되어 first-party API에 클라이언트별 개별 승인이 필요하고, 재등록마다 ID가 바뀌어 그 승인이 유지되지 않기 때문이다. 고정 OAuth 클라이언트를 쓴다.
+
+CIMD 기록은 그대로 유효하다 — 제공자를 재검토할 때 CIMD 지원을 기준에 넣는다. 서버 쪽 변경은 없다. CIMD는 클라이언트와 인가 서버 사이의 문제다.
 
 ## 9. 시크릿
 

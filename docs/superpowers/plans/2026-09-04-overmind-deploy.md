@@ -1522,7 +1522,7 @@ D-M은 배포 스모크 D4가 돌기 전까지 '열려 있음'에 둔다. 코드
 
 | | 무엇 | 왜 |
 |---|---|---|
-| H1 | **Auth0 테넌트 설정** — API 생성(Identifier=audience), `memory:read`/`memory:write` permission 정의, DCR 활성화, **Default Audience 설정**, third-party 기본 permission 지정 | 외부 서비스 콘솔 |
+| H1 | **Auth0 테넌트 설정** — API 생성(**Identifier = 메타데이터의 `resource` 값 = `https://overmind.<도메인>/mcp`, 경로 포함**. D-P), `memory:read`/`memory:write` permission 정의, **Default Audience 설정**, 그리고 **고정 OAuth 클라이언트**(Regular Web Application) 생성 후 그 API에 접근 승인 — Client ID와 **Client Secret**을 MCP 클라이언트 설정에 넣는다. ~~DCR 활성화, third-party 기본 permission 지정~~ **DCR을 쓰지 않는다(D-Q)** — DCR 클라이언트는 third-party라 개별 승인이 필요하고 재등록마다 ID가 바뀐다 | 외부 서비스 콘솔 |
 | H2 | **DNS A 레코드** — `overmind.<도메인>` → 인스턴스 공인 IP | Caddy의 ACME HTTP-01이 이걸 요구한다 |
 | H3 | **flight-friend 종료와 Caddy 블록 교체** | 사용자 판단 |
 | H4 | **디스크 정리** — `docker system df`로 소비처 확인 후 정리. **볼륨 삭제는 flight-friend 종료 확정 뒤에** | 100 GB가 차 있다 |

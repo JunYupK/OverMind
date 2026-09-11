@@ -26,6 +26,8 @@
 | D-L | **백업은 pg_dump + gpg + OCI 오브젝트 스토리지.** 복원 드릴이 검증 항목에 포함된다 | 배포 스펙 §11 | 2026-09-04 |
 | D-N | **DB 계정을 부트스트랩 superuser와 앱 전용 role로 분리한다.** postgres 공식 이미지가 `POSTGRES_USER`를 `initdb --username`으로 클러스터 superuser로 만들기 때문에, 앱이 그 계정을 그대로 쓰면 배포 스펙 §6.2("앱 계정 하나를 쓴다. superuser가 아니다")를 어긴다. 원래 계획에는 없었고 Task 5 리뷰가 실측으로 찾아 만든 분리다. `deploy/initdb/02-app-role.sh`가 두 이름이 같으면 `psql` 호출 전에 기동을 거부한다 — 경고 산문만으로는 아무 계층도 에러를 내지 않는다는 것이 3차 리뷰에서 재발견됐다 | 배포 스펙 §6.2, §6.3, `docs/harness/70-m0-smoke.md`의 D3, Task 5 리뷰(Critical) | 2026-09-07 |
 | D-O | **시크릿 파일을 `db.env`/`app.env` 두 개로 나누고, `db` 서비스에서 `${...}` 치환을 완전히 뺀다.** 단일 `overmind.env` + `${...}` 치환 설계로는 배포 README의 "최초 1회"가 `/opt/overmind/.env`를 `OVERMIND_TAG=` 한 줄로 덮어쓰는 순간 DB 자격증명 셋이 빈 문자열이 되어 postgres 엔트리포인트가 하드 실패하고 스택이 영원히 뜨지 않는다. 원래 계획에는 없었고 Task 5 리뷰가 실측으로 찾았다 | 배포 스펙 §5.4, §9.2, §9.4, §10.3, §11, Task 5 리뷰(Critical) | 2026-09-07 |
+| D-P | **Auth0 API Identifier는 메타데이터 문서의 `resource` 값과 정확히 같아야 한다 — 경로 `/mcp`를 포함한다.** 스펙 §8.3은 "Claude가 `audience`를 안 보내므로 Default Audience로 채운다"고 했는데, 실측 결과 Auth0는 RFC 8707 `resource` 값을 그대로 audience 조회 키로 쓴다. Identifier를 오리진(`https://overmind.<도메인>`)으로 만들면 `access_denied: Service not found: https://overmind.<도메인>/mcp`로 거부된다. Default Audience는 audience가 **아예 오지 않을 때만** 쓰이므로 이 경로에서는 발동하지 않는다. Auth0 API Identifier는 생성 후 변경 불가라 잘못 만들면 새로 만들어야 한다 | 실배포 2026-09-10, Auth0 테넌트 로그 | 2026-09-10 |
+| D-Q | **DCR을 쓰지 않고 고정 OAuth 클라이언트를 쓴다.** 스펙 §8.1은 "DCR로 등록된 앱은 third-party로 분류되어 `authorization_code` + `refresh_token`만 쓸 수 있는데, 이는 MCP가 필요로 하는 것과 정확히 일치한다"고 판단했다. **틀렸다** — Auth0에서 third-party 클라이언트는 first-party API에 **클라이언트별 개별 승인** 없이는 접근하지 못하고(`invalid_request: Client "tpc_…" is not authorized to access resource server`), 재등록마다 `tpc_` ID가 바뀌어 개별 승인이 구조적으로 무의미하다. 대신 Auth0에 Regular Web Application을 하나 만들어 API 접근을 승인하고, MCP 클라이언트 설정에서 그 Client ID와 **Client Secret**을 직접 넣는다. 시크릿을 비우면 토큰 엔드포인트가 `Unauthorized`(`feacft`)로 거부한다 | 실배포 2026-09-10, Auth0 테넌트 로그 | 2026-09-10 |
 
 **D-M은 빠진 것이 아니다.** ID 순서상 D-L과 D-N 사이에 D-M이 와야 하지만, D-M은 아직 실행으로 확인되지 않은 판단이라 이 "확정" 표에 없다 — 아래 "열려 있음"에 있다.
 
@@ -81,6 +83,19 @@ T10에서는 플랜이 지정한 BOM 구성을 따르고 MCP SDK를 별도로 �
   배포 스펙 §13, `docs/harness/70-m0-smoke.md`의 배포 스모크 D4가 확인 또는 반증한다.
   반증되면(프로파일을 뺀 쪽만 기동에 성공하면) `Validation`이 진짜 게이트이고 이 행을
   "확정"으로 옮기며 문구를 고친다
+
+- **D-R — `source.conversation_id`와 `source.message_id`를 클라이언트 필수 입력에서 뺀다.**
+  `remember_memory`는 셋(`client`/`conversation_id`/`message_id`)을 모두 required로 받고
+  `V2` 스키마도 `NOT NULL` + nonblank로 강제한다. 그런데 **MCP 프로토콜은 호스트의
+  conversation id나 message id를 도구 인자로 노출하지 않는다** — 모델이 채우려면 지어내는
+  수밖에 없고, 그러면 출처 필드가 출처를 증명하지 못한다. 2026-09-10 실사용에서 Claude
+  클라이언트가 이 이유로 저장을 거부하고 사용자에게 판단을 넘겼다.
+  서버가 정직하게 알 수 있는 것은 `client`(MCP `initialize`의 `clientInfo.name`)와
+  세션 식별자(`Mcp-Session-Id`)뿐이고, `message_id`는 정직한 출처가 아예 없다.
+  방향: `client`는 서버가 채우고 도구 입력에서 제거, `conversation_id`는 optional 또는
+  세션에서 유도, `message_id`는 nullable. **`V2`를 고치면 `MigrationChecksumGuardTest`가
+  막으므로 `V3` 마이그레이션이 필요하다.** M1에서 결정한다
+
 
 ## 반영 대기 결함 — M2 이후 도메인 스펙
 
